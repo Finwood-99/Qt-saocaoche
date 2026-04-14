@@ -1,0 +1,85 @@
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+
+QT_BEGIN_NAMESPACE
+namespace Ui {
+class MainWindow;
+}
+QT_END_NAMESPACE
+
+class Ros2Manager;
+class QLabel;
+class QGraphicsView;
+class QGraphicsScene;
+class QListWidget;
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow();
+
+private slots:
+    void onMenuChanged(int row);
+    void onConnectRos();
+    void onStartTask();
+    void onPauseTask();
+    void onStopTask();
+    void onBackCharge();
+
+    void onManualForward();
+    void onManualBackward();
+    void onManualLeft();
+    void onManualRight();
+    void onManualStop();
+
+    void onResetParams();
+    void onSaveParams();
+    void onApplyParams();
+
+    void onLoadDemoMap();
+    void onGenerateDemoPath();
+    void onClearMapPath();
+
+    void onClearLogs();
+
+    void onRosConnected(bool ok);
+    void onStatusReceived(const QString &status);
+    void onTelemetryReceived(const QString &telemetry);
+
+private:
+    Ui::MainWindow *ui;
+    Ros2Manager *ros2_manager_;
+
+    QLabel *monitor_x_label_;
+    QLabel *monitor_y_label_;
+    QLabel *monitor_yaw_label_;
+    QLabel *monitor_linear_label_;
+    QLabel *monitor_angular_label_;
+    QLabel *monitor_battery_label_;
+    QLabel *monitor_status_label_;
+
+    QGraphicsView *map_view_;
+    QGraphicsScene *map_scene_;
+    QListWidget *path_list_;
+
+    QListWidget *info_log_list_;
+    QListWidget *warn_log_list_;
+    QListWidget *error_log_list_;
+
+    QString last_status_;
+    bool low_battery_warned_;
+
+    void initPages();
+    void appendInfoLog(const QString &text);
+    void appendWarnLog(const QString &text);
+    void appendErrorLog(const QString &text);
+    QString buildParamsText() const;
+    void drawDemoMapBase();
+};
+
+#endif // MAINWINDOW_H
