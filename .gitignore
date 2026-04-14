@@ -10,3 +10,26 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 compile_commands.json
+
+# build outputs
+build/
+install/
+log/
+
+# Qt / editor temp
+*.user
+*.autosave
+*.pro.user
+
+# CMake generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# backup files
+*.bak
+*.bak_*
+*.tmp
+*~
