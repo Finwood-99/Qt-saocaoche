@@ -763,8 +763,17 @@ void MainWindow::initTopButtons()
     connectButtonByNames({"btnBackCharge", "btnGoHome", "btnBackHome", "btnChargeBack"},
                          [this]() { onGoHomeClicked(); });
 
-    connectButtonByNames({"btnMultiGoalNav"},
-                         [this]() { onMultiGoalNavClicked(); });
+    if (ui->btnRouteList) {
+        connect(ui->btnRouteList, &QPushButton::clicked,
+                this, &MainWindow::onRouteListClicked, Qt::UniqueConnection);
+    }
+
+    if (ui->btnMultiGoalNav) {
+        connect(ui->btnMultiGoalNav, &QPushButton::clicked,
+                this, &MainWindow::onMultiGoalNavClicked, Qt::UniqueConnection);
+    }
+
+    qDebug() << "[INIT] initTopButtons finished";
 }
 
 void MainWindow::initPageSwitching()
@@ -2232,56 +2241,75 @@ void MainWindow::update3DViewButtons(const QString &viewName)
 
 void MainWindow::onRouteListClicked()
 {
-    auto *dialog = new RouteListDialog(this);
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    qDebug() << "[CLICK] onRouteListClicked";
 
-    connect(dialog, &RouteListDialog::multiNavStarted, this, [this]() {
-        if (ui->labelTask) {
-            ui->labelTask->setText("多点导航");
-        }
-        if (ui->labelRobotStatus) {
+    if (!routeDialog_) {
+        routeDialog_ = new RouteListDialog(this);
+
+        connect(routeDialog_, &QObject::destroyed, this, [this]() {
+            routeDialog_ = nullptr;
+        });
+
+        // ⭐ 只连接一次（非常关键）
+        connect(routeDialog_, &RouteListDialog::multiNavStarted, this, [this]() {
+            isCharging_ = false;
             setRobotState(Running);
-        }
-        if (ui->labelModeValue) {
-            setRobotState(Running);
-        }
-        if (ui->labelBottomStatus) {
-            ui->labelBottomStatus->setText("系统状态：多点导航已启动");
-        }
-        if (ui->labelBottomInfo) {
-            ui->labelBottomInfo->setText("模式：导航模式");
-        }
-    });
 
-    connect(dialog, &RouteListDialog::multiNavProgress, this, [this](const QString &pointName) {
-        if (ui->labelBottomStatus) {
-            ui->labelBottomStatus->setText(QString("系统状态：正在前往 %1").arg(pointName));
-        }
-    });
+            feedback_.paused = false;
+            feedback_.charging = false;
+            feedback_.currentTask = "多点导航";
+            feedback_.linearSpeed = 0.80;
+            feedback_.angularSpeed = 0.10;
+            feedback_.currentWaypointIndex = -1;
+            feedback_.totalWaypoints = 0;
 
-    connect(dialog, &RouteListDialog::multiNavFinished, this, [this]() {
-        isCharging_ = false;
-        setRobotState(Idle);
-        feedback_.paused = false;
-        feedback_.charging = false;
+            applyFeedbackToUi();
+        });
 
-        feedback_.currentTask = "空闲";
-        feedback_.linearSpeed = 0.00;
-        feedback_.angularSpeed = 0.00;
+        connect(routeDialog_, &RouteListDialog::multiNavProgress, this, [this](const QString &pointName) {
+            if (ui->labelBottomStatus) {
+                ui->labelBottomStatus->setText(QString("系统状态：正在前往 %1").arg(pointName));
+            }
+        });
 
-        if (ui->labelBottomStatus) {
-            ui->labelBottomStatus->setText("系统状态：多点导航完成");
-        }
-        if (ui->labelBottomInfo) {
-            ui->labelBottomInfo->setText("模式：地图与路径");
-        }
+        connect(routeDialog_, &RouteListDialog::multiNavProgressIndex, this,
+                [this](int currentIndex, int totalCount, const QString &pointName) {
+                    feedback_.currentWaypointIndex = currentIndex;
+                    feedback_.totalWaypoints = totalCount;
 
-        applyFeedbackToUi();
-    });
+                    if (ui->labelBottomStatus) {
+                        ui->labelBottomStatus->setText(
+                            QString("系统状态：正在前往 %1(%2/%3)")
+                                .arg(pointName)
+                                .arg(currentIndex + 1)
+                                .arg(totalCount));
+                    }
+
+                    applyFeedbackToUi();
+                });
+
+        connect(routeDialog_, &RouteListDialog::multiNavFinished, this, [this]() {
+            isCharging_ = false;
+            setRobotState(Idle);
+
+            feedback_.paused = false;
+            feedback_.charging = false;
+            feedback_.currentTask = "空闲";
+            feedback_.linearSpeed = 0.00;
+            feedback_.angularSpeed = 0.00;
+
+            applyFeedbackToUi();
+        });
+    }
+
+    routeDialog_->show();
+    routeDialog_->raise();
+    routeDialog_->activateWindow();
 }
 
 void MainWindow::onMultiGoalNavClicked()
 {
+    qDebug() << "[CLICK] onMultiGoalNavClicked";
 
     if (currentState_ == Charging) {
         if (ui->labelBottomStatus) {
@@ -2290,54 +2318,18 @@ void MainWindow::onMultiGoalNavClicked()
         return;
     }
 
-    if (currentState_ == Charging)
-        return;
+    // ⭐ 先确保窗口存在
+    if (!routeDialog_) {
+        onRouteListClicked(); // 直接复用
+    }
 
-    isCharging_ = false;
-    setRobotState(Running);
-    auto *dialog = new RouteListDialog(this);
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    if (routeDialog_) {
+        routeDialog_->show();
+        routeDialog_->raise();
+        routeDialog_->activateWindow();
 
-    connect(dialog, &RouteListDialog::multiNavStarted, this, [this]() {
-        isCharging_ = false;
-        setRobotState(Running);
-
-        if (ui->labelTask) {
-            ui->labelTask->setText("多点导航");
-        }
-        if (ui->labelBottomStatus) {
-            ui->labelBottomStatus->setText("系统状态：多点导航已启动");
-        }
-        if (ui->labelBottomInfo) {
-            ui->labelBottomInfo->setText("模式：导航模式");
-        }
-    });
-
-    connect(dialog, &RouteListDialog::multiNavProgress, this, [this](const QString &pointName) {
-        if (ui->labelBottomStatus) {
-            ui->labelBottomStatus->setText(QString("系统状态：正在前往 %1").arg(pointName));
-        }
-    });
-
-    connect(dialog, &RouteListDialog::multiNavFinished, this, [this]() {
-        isCharging_ = false;
-        setRobotState(Idle);
-        feedback_.paused = false;
-        feedback_.charging = false;
-
-        feedback_.currentTask = "空闲";
-        feedback_.linearSpeed = 0.00;
-        feedback_.angularSpeed = 0.00;
-
-        if (ui->labelBottomStatus) {
-            ui->labelBottomStatus->setText("系统状态：多点导航完成");
-        }
-        if (ui->labelBottomInfo) {
-            ui->labelBottomInfo->setText("模式：地图与路径");
-        }
-
-        applyFeedbackToUi();
-    });
+        routeDialog_->startMultiNavDirectly(); // ⭐ 关键区别
+    }
 }
 
 void MainWindow::setRobotState(RobotState state)
@@ -2481,7 +2473,18 @@ void MainWindow::applyFeedbackToUi()
     }
 
     if (ui->labelTask) {
-        ui->labelTask->setText(feedback_.currentTask);
+        QString taskText = feedback_.currentTask;
+
+        if (feedback_.totalWaypoints > 0 &&
+            feedback_.currentWaypointIndex >= 0 &&
+            feedback_.currentWaypointIndex < feedback_.totalWaypoints &&
+            feedback_.currentTask == "多点导航") {
+            taskText += QString("（%1/%2）")
+                            .arg(feedback_.currentWaypointIndex + 1)
+                            .arg(feedback_.totalWaypoints);
+        }
+
+        ui->labelTask->setText(taskText);
     }
 
     if (ui->labelModeValue) {

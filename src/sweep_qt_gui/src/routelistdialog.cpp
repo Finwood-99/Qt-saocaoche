@@ -1,12 +1,12 @@
 #include "sweep_qt_gui/routelistdialog.h"
 
-#include <QHeaderView>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QPushButton>
 #include <QTableWidget>
-#include <QVBoxLayout>
 #include <QTableWidgetItem>
 #include <QTimer>
+#include <QVBoxLayout>
 
 RouteListDialog::RouteListDialog(QWidget *parent)
     : QDialog(parent),
@@ -122,9 +122,9 @@ void RouteListDialog::onStartMultiNavClicked()
     }
 
     refreshTable();
-    
+
     emit multiNavStarted();
-    
+
     gotoNextPoint();
 }
 
@@ -138,11 +138,14 @@ void RouteListDialog::gotoNextPoint()
 
     waypoints_[currentIndex_].status = "执行中";
     refreshTable();
+    tableWidget_->selectRow(currentIndex_);
 
     setWindowTitle(QString("路径点列表 - 正在前往：%1")
                        .arg(waypoints_[currentIndex_].name));
-                       
-    emit multiNavProgress(waypoints_[currentIndex_].name);                                      
+
+    emit multiNavProgress(waypoints_[currentIndex_].name);
+    emit multiNavProgressIndex(currentIndex_, waypoints_.size(),
+                               waypoints_[currentIndex_].name);
 
     QTimer::singleShot(2000, this, [this]() {
         if (currentIndex_ < waypoints_.size()) {

@@ -48,6 +48,7 @@ QT_END_NAMESPACE
 
 class QLabel;
 class QPlainTextEdit;
+class RouteListDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -247,6 +248,7 @@ private:
 #endif
 
 private:
+    RouteListDialog *routeDialog_ = nullptr;
     Ui::MainWindow *ui;
 
     QTimer *ros_spin_timer_ = nullptr;

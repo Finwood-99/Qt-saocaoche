@@ -2,8 +2,8 @@
 #define SWEEP_QT_GUI_ROUTELISTDIALOG_H
 
 #include <QDialog>
-#include <QVector>
 #include <QString>
+#include <QVector>
 
 class QTableWidget;
 class QPushButton;
@@ -15,10 +15,11 @@ class RouteListDialog : public QDialog
 public:
     explicit RouteListDialog(QWidget *parent = nullptr);
     void startMultiNavDirectly();
-    
+
 signals:
     void multiNavStarted();
     void multiNavProgress(const QString &pointName);
+    void multiNavProgressIndex(int currentIndex, int totalCount, const QString &pointName);
     void multiNavFinished();
 
 private slots:
@@ -34,7 +35,7 @@ private:
         double y;
         QString status;
     };
-    
+
     void initUi();
     void loadMockData();
     void refreshTable();
