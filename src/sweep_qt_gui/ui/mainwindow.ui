@@ -266,7 +266,7 @@
       <x>10</x>
       <y>70</y>
       <width>1741</width>
-      <height>851</height>
+      <height>861</height>
      </rect>
     </property>
     <widget class="QWidget" name="layoutWidget">
@@ -505,8 +505,8 @@
            <rect>
             <x>1360</x>
             <y>20</y>
-            <width>350</width>
-            <height>791</height>
+            <width>331</width>
+            <height>801</height>
            </rect>
           </property>
           <property name="sizePolicy">
@@ -949,6 +949,29 @@
                </item>
               </layout>
              </widget>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelNavProgress">
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>20</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>导航进度：0/0</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QProgressBar" name="progressNav">
+             <property name="value">
+              <number>0</number>
+             </property>
+             <property name="format">
+              <string>%v/%m</string>
+             </property>
             </widget>
            </item>
           </layout>

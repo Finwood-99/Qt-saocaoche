@@ -194,6 +194,11 @@ private:
     void initSimulatedFeedback();
     void updateSimulatedFeedback();
 
+    void updateManualControlState(const QString &taskText,
+                                  double linearSpeed,
+                                  double angularSpeed,
+                                  const QString &bottomStatus);
+
 private:
     void initRos();
     void initUi();

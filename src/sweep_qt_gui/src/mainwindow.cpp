@@ -617,6 +617,17 @@ void MainWindow::initUi()
             "  color: black;"
             "}");
 
+        if (ui->progressNav) {
+            ui->progressNav->setMinimum(0);
+            ui->progressNav->setMaximum(100);
+            ui->progressNav->setValue(0);
+            ui->progressNav->setFormat("%v/%m");
+        }
+
+        if (ui->labelNavProgress) {
+            ui->labelNavProgress->setText("导航进度：0/0");
+        }
+
         for (int i = 0; i < ui->listMenu->count(); ++i) {
             QListWidgetItem *item = ui->listMenu->item(i);
             if (item) {
@@ -1554,6 +1565,32 @@ void MainWindow::onStopTaskClicked()
         ui->btnContinueTask->setEnabled(false);
 }
 
+void MainWindow::updateManualControlState(const QString &taskText,
+                                          double linearSpeed,
+                                          double angularSpeed,
+                                          const QString &bottomStatus)
+{
+    isCharging_ = false;
+
+    feedback_.paused = false;
+    feedback_.charging = false;
+    feedback_.currentTask = taskText;
+    feedback_.linearSpeed = linearSpeed;
+    feedback_.angularSpeed = angularSpeed;
+    feedback_.vehicleStatus = (taskText == "空闲") ? "待机" : "手动控制中";
+    feedback_.modeText = "手动模式";
+
+    applyFeedbackToUi();
+
+    if (ui->labelBottomStatus) {
+        ui->labelBottomStatus->setText(bottomStatus);
+    }
+
+    if (ui->labelBottomInfo) {
+        ui->labelBottomInfo->setText("模式：手动模式");
+    }
+}
+
 void MainWindow::onGoHomeClicked()
 {
     setCurrentTaskText("回充中");
@@ -1605,31 +1642,32 @@ void MainWindow::onShowLogsPage()
 
 void MainWindow::onManualForward()
 {
-    const double speed = spinValue("speedSpin", 0.80);
-    publishManualCmd(speed, 0.0);
+    publishManualCmd(0.30, 0.0);
+    updateManualControlState("手动前进", 0.30, 0.0, "系统状态：手动前进");
 }
 
 void MainWindow::onManualBackward()
 {
-    const double speed = spinValue("speedSpin", 0.80);
-    publishManualCmd(-speed, 0.0);
+    publishManualCmd(-0.20, 0.0);
+    updateManualControlState("手动后退", -0.20, 0.0, "系统状态：手动后退");
 }
 
 void MainWindow::onManualLeft()
 {
-    const double speed = spinValue("speedSpin", 0.80);
-    publishManualCmd(0.0, speed);
+    publishManualCmd(0.0, 0.50);
+    updateManualControlState("手动左转", 0.0, 0.50, "系统状态：手动左转");
 }
 
 void MainWindow::onManualRight()
 {
-    const double speed = spinValue("speedSpin", 0.80);
-    publishManualCmd(0.0, -speed);
+    publishManualCmd(0.0, -0.50);
+    updateManualControlState("手动右转", 0.0, -0.50, "系统状态：手动右转");
 }
 
 void MainWindow::onManualStop()
 {
     publishManualCmd(0.0, 0.0);
+    updateManualControlState("空闲", 0.0, 0.0, "系统状态：手动停止");
 }
 
 #if SWEEP_HAS_AGV_STATUS
@@ -2260,7 +2298,8 @@ void MainWindow::onRouteListClicked()
             feedback_.currentTask = "多点导航";
             feedback_.linearSpeed = 0.80;
             feedback_.angularSpeed = 0.10;
-            feedback_.currentWaypointIndex = -1;
+
+            feedback_.currentWaypointIndex = 0;
             feedback_.totalWaypoints = 0;
 
             applyFeedbackToUi();
@@ -2297,6 +2336,8 @@ void MainWindow::onRouteListClicked()
             feedback_.currentTask = "空闲";
             feedback_.linearSpeed = 0.00;
             feedback_.angularSpeed = 0.00;
+            feedback_.currentWaypointIndex = -1;
+            feedback_.totalWaypoints = 0;
 
             applyFeedbackToUi();
         });
@@ -2511,6 +2552,28 @@ void MainWindow::applyFeedbackToUi()
             QString("当前位置： %1,%2")
                 .arg(feedback_.posX, 0, 'f', 2)
                 .arg(feedback_.posY, 0, 'f', 2));
+
+        if (ui->progressNav) {
+            if (feedback_.totalWaypoints > 0) {
+                ui->progressNav->setMaximum(feedback_.totalWaypoints);
+                ui->progressNav->setValue(feedback_.currentWaypointIndex + 1);
+            } else {
+                ui->progressNav->setMaximum(100);
+                ui->progressNav->setValue(0);
+            }
+        }
+
+        if (ui->labelNavProgress) {
+            if (feedback_.totalWaypoints > 0 &&
+                feedback_.currentWaypointIndex >= 0) {
+                ui->labelNavProgress->setText(
+                    QString("导航进度：%1/%2")
+                        .arg(feedback_.currentWaypointIndex + 1)
+                        .arg(feedback_.totalWaypoints));
+            } else {
+                ui->labelNavProgress->setText("导航进度：0/0");
+            }
+        }
     }
 }
 

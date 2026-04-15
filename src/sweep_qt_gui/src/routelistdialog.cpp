@@ -1,5 +1,8 @@
 #include "sweep_qt_gui/routelistdialog.h"
 
+#include <QBrush>
+#include <QColor>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QPushButton>
@@ -101,11 +104,26 @@ void RouteListDialog::refreshTable()
     for (int i = 0; i < waypoints_.size(); ++i) {
         const auto &wp = waypoints_[i];
 
-        tableWidget_->setItem(i, 0, new QTableWidgetItem(QString::number(i + 1)));
-        tableWidget_->setItem(i, 1, new QTableWidgetItem(wp.name));
-        tableWidget_->setItem(i, 2, new QTableWidgetItem(QString::number(wp.x, 'f', 2)));
-        tableWidget_->setItem(i, 3, new QTableWidgetItem(QString::number(wp.y, 'f', 2)));
-        tableWidget_->setItem(i, 4, new QTableWidgetItem(wp.status));
+        auto *itemIndex = new QTableWidgetItem(QString::number(i + 1));
+        auto *itemName = new QTableWidgetItem(wp.name);
+        auto *itemX = new QTableWidgetItem(QString::number(wp.x, 'f', 2));
+        auto *itemY = new QTableWidgetItem(QString::number(wp.y, 'f', 2));
+        auto *itemStatus = new QTableWidgetItem(wp.status);
+
+        if (wp.status == "待执行") {
+            itemStatus->setForeground(QBrush(QColor(120, 120, 120)));
+        } else if (wp.status == "执行中") {
+            itemStatus->setForeground(QBrush(QColor(0, 102, 204)));
+            itemStatus->setFont(QFont(itemStatus->font().family(), itemStatus->font().pointSize(), QFont::Bold));
+        } else if (wp.status == "已完成") {
+            itemStatus->setForeground(QBrush(QColor(0, 153, 0)));
+        }
+
+        tableWidget_->setItem(i, 0, itemIndex);
+        tableWidget_->setItem(i, 1, itemName);
+        tableWidget_->setItem(i, 2, itemX);
+        tableWidget_->setItem(i, 3, itemY);
+        tableWidget_->setItem(i, 4, itemStatus);
     }
 }
 
