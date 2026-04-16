@@ -759,29 +759,41 @@ void MainWindow::initUi()
 
 void MainWindow::initTopButtons()
 {
-    connectButtonByNames({"btnConnectRos", "btnConnectRos2", "btnConnectROS2", "btnConnect"},
-                         [this]() { onConnectRosClicked(); });
-
-    connectButtonByNames({"btnStartTask", "btnStart", "btnRunTask"},
-                         [this]() { onStartTaskClicked(); });
-
-    connectButtonByNames({"btnPauseTask", "btnPause"},
-                         [this]() { onPauseTaskClicked(); });
-
-    connectButtonByNames({"btnStopTask", "btnStop"},
-                         [this]() { onStopTaskClicked(); });
-
-    connectButtonByNames({"btnBackCharge", "btnGoHome", "btnBackHome", "btnChargeBack"},
-                         [this]() { onGoHomeClicked(); });
-
-    if (ui->btnRouteList) {
-        connect(ui->btnRouteList, &QPushButton::clicked,
-                this, &MainWindow::onRouteListClicked, Qt::UniqueConnection);
+    // 主按钮在构造函数里已经直接 connect 过了，
+    // 这里仅做“兜底绑定”，避免重复连接。
+    if (!ui->btnConnectRos) {
+        connectButtonByNames({"btnConnectRos", "btnConnectRos2", "btnConnectROS2", "btnConnect"},
+                             [this]() { onConnectRosClicked(); });
     }
 
-    if (ui->btnMultiGoalNav) {
-        connect(ui->btnMultiGoalNav, &QPushButton::clicked,
-                this, &MainWindow::onMultiGoalNavClicked, Qt::UniqueConnection);
+    if (!ui->btnStartTask) {
+        connectButtonByNames({"btnStartTask", "btnStart", "btnRunTask"},
+                             [this]() { onStartTaskClicked(); });
+    }
+
+    if (!ui->btnPauseTask) {
+        connectButtonByNames({"btnPauseTask", "btnPause"},
+                             [this]() { onPauseTaskClicked(); });
+    }
+
+    if (!ui->btnStopTask) {
+        connectButtonByNames({"btnStopTask", "btnStop"},
+                             [this]() { onStopTaskClicked(); });
+    }
+
+    if (!ui->btnBackCharge) {
+        connectButtonByNames({"btnBackCharge", "btnGoHome", "btnBackHome", "btnChargeBack"},
+                             [this]() { onBackChargeClicked(); });
+    }
+
+    if (!ui->btnRouteList) {
+        connectButtonByNames({"btnRouteList"},
+                             [this]() { onRouteListClicked(); });
+    }
+
+    if (!ui->btnMultiGoalNav) {
+        connectButtonByNames({"btnMultiGoalNav"},
+                             [this]() { onMultiGoalNavClicked(); });
     }
 
     qDebug() << "[INIT] initTopButtons finished";
@@ -953,15 +965,15 @@ void MainWindow::ensureManualPage()
         return;
     }
 
-    QPushButton *forwardBtn = findFirstChild<QPushButton>(ui->pageManual,
+    QPushButton *forwardBtn = findFirstChild<QPushButton>(this,
                                                           {"btnForward", "btnManualForward", "btnMoveForward"});
-    QPushButton *backwardBtn = findFirstChild<QPushButton>(ui->pageManual,
+    QPushButton *backwardBtn = findFirstChild<QPushButton>(this,
                                                            {"btnBackward", "btnManualBackward", "btnMoveBackward"});
-    QPushButton *leftBtn = findFirstChild<QPushButton>(ui->pageManual,
+    QPushButton *leftBtn = findFirstChild<QPushButton>(this,
                                                        {"btnLeft", "btnManualLeft", "btnTurnLeft"});
-    QPushButton *rightBtn = findFirstChild<QPushButton>(ui->pageManual,
+    QPushButton *rightBtn = findFirstChild<QPushButton>(this,
                                                         {"btnRight", "btnManualRight", "btnTurnRight"});
-    QPushButton *stopBtn = findFirstChild<QPushButton>(ui->pageManual,
+    QPushButton *stopBtn = findFirstChild<QPushButton>(this,
                                                        {"btnStopMove", "btnManualStop", "btnStopManual"});
 
     if (!forwardBtn && !backwardBtn && !leftBtn && !rightBtn && !stopBtn) {
@@ -1232,6 +1244,8 @@ void MainWindow::appendLog(const QString &level, const QString &text)
 
 void MainWindow::setRos2StatusText(const QString &text)
 {
+    feedback_.rosConnected = (text == "已连接");
+
     const auto labels = findAllChildren<QLabel>(
         this,
         {"labelRosStatus",
@@ -1249,6 +1263,8 @@ void MainWindow::setRos2StatusText(const QString &text)
 
 void MainWindow::setVehicleStatusText(const QString &text)
 {
+    feedback_.vehicleStatus = text;
+
     const auto labels = findAllChildren<QLabel>(
         this,
         {"labelRobotStatus",
@@ -1293,6 +1309,8 @@ void MainWindow::updateBatteryDisplay()
 
 void MainWindow::setCurrentTaskText(const QString &text)
 {
+    feedback_.currentTask = text;
+
     const auto labels = findAllChildren<QLabel>(
         this,
         {"labelTask",
@@ -1382,7 +1400,8 @@ void MainWindow::connectButtonByNames(const QStringList &names, const std::funct
 
 void MainWindow::bindManualButton(const QStringList &names, const std::function<void()> &fn)
 {
-    if (auto *btn = findFirstChild<QPushButton>(ui->pageManual, names)) {
+    // 手动按钮现在在 pageMap 右侧系统信息区里，不一定在 pageManual
+    if (auto *btn = findFirstChild<QPushButton>(this, names)) {
         connect(btn, &QPushButton::clicked, this, [fn]() { fn(); });
     }
 }
@@ -1417,29 +1436,23 @@ void MainWindow::onBtnApplyParamsClicked()
 
 void MainWindow::onConnectRosClicked()
 {
-    if (ui->labelRosStatus) {
-        ui->labelRosStatus->setText("已连接");
-    }
+    feedback_.rosConnected = true;
+    currentState_ = Idle;
 
-    if (ui->labelRobotStatus) {
-        setRobotState(Idle);
-    }
+    feedback_.vehicleStatus = "待机";
+    feedback_.currentTask = "空闲";
+    feedback_.modeText = "地图与路径";
+    feedback_.linearSpeed = 0.00;
+    feedback_.angularSpeed = 0.00;
+    feedback_.charging = false;
+    feedback_.paused = false;
 
-    if (ui->labelTask) {
-        ui->labelTask->setText("空闲");
-    }
-
-    if (ui->labelModeValue) {
-        setRobotState(Idle);
-    }
+    applyFeedbackToUi();
 
     if (ui->labelBottomStatus) {
         ui->labelBottomStatus->setText("系统状态：ROS2已连接");
     }
 
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：地图与路径");
-    }
     if (ui->btnStartTask)
         ui->btnStartTask->setEnabled(true);
     if (ui->btnLocate)
@@ -1457,7 +1470,6 @@ void MainWindow::onConnectRosClicked()
 
 void MainWindow::onStartTaskClicked()
 {
-
     if (currentState_ == Charging) {
         if (ui->labelBottomStatus) {
             ui->labelBottomStatus->setText("系统状态：正在回充，暂时不能开始建图");
@@ -1465,40 +1477,23 @@ void MainWindow::onStartTaskClicked()
         return;
     }
 
-    if (currentState_ == Charging)
-        return;
+    feedback_.rosConnected = true;
+    currentState_ = Running;
 
-    if (ui->labelRosStatus) {
-        ui->labelRosStatus->setText("已连接");
-    }
+    feedback_.vehicleStatus = "作业中";
+    feedback_.currentTask = "建图";
+    feedback_.modeText = "建图模式";
+    feedback_.linearSpeed = 0.80;
+    feedback_.angularSpeed = 0.00;
+    feedback_.charging = false;
+    feedback_.paused = false;
 
-    if (ui->labelRobotStatus) {
-        setRobotState(Running);
-    }
-
-    if (ui->labelTask) {
-        ui->labelTask->setText("建图");
-    }
-
-    if (ui->labelModeValue) {
-        ui->labelModeValue->setText("建图模式");
-    }
-
-    if (ui->labelSpeedValue) {
-        ui->labelSpeedValue->setText("0.80 m/s");
-    }
-
-    if (ui->labelPoseValue) {
-        ui->labelPoseValue->setText("X: 0.00  Y: 0.00  Yaw: 0.00");
-    }
+    applyFeedbackToUi();
 
     if (ui->labelBottomStatus) {
         ui->labelBottomStatus->setText("系统状态：开始建图");
     }
 
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：建图模式");
-    }
     if (ui->btnPauseTask)
         ui->btnPauseTask->setEnabled(true);
     if (ui->btnContinueTask)
@@ -1520,21 +1515,19 @@ void MainWindow::onPauseTaskClicked()
         return;
     }
 
-    setRobotState(Paused);
+    currentState_ = Paused;
     feedback_.paused = true;
     feedback_.charging = false;
-
+    feedback_.vehicleStatus = "暂停中";
+    feedback_.modeText = "任务暂停";
     feedback_.linearSpeed = 0.00;
     feedback_.angularSpeed = 0.00;
+
+    applyFeedbackToUi();
 
     if (ui->labelBottomStatus) {
         ui->labelBottomStatus->setText("系统状态：任务已暂停");
     }
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：任务暂停");
-    }
-
-    applyFeedbackToUi();
 
     if (ui->btnPauseTask)
         ui->btnPauseTask->setEnabled(false);
@@ -1544,20 +1537,23 @@ void MainWindow::onPauseTaskClicked()
 
 void MainWindow::onStopTaskClicked()
 {
-    setRobotState(Idle);
+    currentState_ = Idle;
 
+    feedback_.paused = false;
+    feedback_.charging = false;
+    feedback_.vehicleStatus = "待机";
     feedback_.currentTask = "已取消";
+    feedback_.modeText = "地图与路径";
     feedback_.linearSpeed = 0.00;
     feedback_.angularSpeed = 0.00;
+    feedback_.currentWaypointIndex = -1;
+    feedback_.totalWaypoints = 0;
+
+    applyFeedbackToUi();
 
     if (ui->labelBottomStatus) {
         ui->labelBottomStatus->setText("系统状态：任务已取消");
     }
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：地图与路径");
-    }
-
-    applyFeedbackToUi();
 
     if (ui->btnPauseTask)
         ui->btnPauseTask->setEnabled(false);
@@ -1571,6 +1567,9 @@ void MainWindow::updateManualControlState(const QString &taskText,
                                           const QString &bottomStatus)
 {
     isCharging_ = false;
+    feedback_.rosConnected = true;
+
+    currentState_ = (taskText == "空闲") ? Idle : Running;
 
     feedback_.paused = false;
     feedback_.charging = false;
@@ -1585,17 +1584,18 @@ void MainWindow::updateManualControlState(const QString &taskText,
     if (ui->labelBottomStatus) {
         ui->labelBottomStatus->setText(bottomStatus);
     }
-
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：手动模式");
-    }
 }
 
 void MainWindow::onGoHomeClicked()
 {
-    setCurrentTaskText("回充中");
+    feedback_.currentTask = "回充中";
     publishTaskCommand("go_home");
     enterChargingMode();
+}
+
+void MainWindow::onBackChargeClicked()
+{
+    onGoHomeClicked();
 }
 
 void MainWindow::onShowHomePage()
@@ -1889,33 +1889,23 @@ void MainWindow::onAgvTelemetryMessage(const std_msgs::msg::String::SharedPtr ms
 
 void MainWindow::onLocateClicked()
 {
-    if (ui->labelRosStatus) {
-        ui->labelRosStatus->setText("已连接");
-    }
+    feedback_.rosConnected = true;
+    currentState_ = Idle;
 
-    if (ui->labelRobotStatus) {
-        setRobotState(Idle);
-    }
+    feedback_.vehicleStatus = "待机";
+    feedback_.currentTask = "定位";
+    feedback_.modeText = "定位模式";
+    feedback_.linearSpeed = 0.00;
+    feedback_.angularSpeed = 0.00;
+    feedback_.charging = false;
+    feedback_.paused = false;
 
-    if (ui->labelTask) {
-        ui->labelTask->setText("定位");
-    }
-
-    if (ui->labelModeValue) {
-        ui->labelModeValue->setText("定位模式");
-    }
-
-    if (ui->labelSpeedValue) {
-        ui->labelSpeedValue->setText("0.00 m/s");
-    }
+    applyFeedbackToUi();
 
     if (ui->labelBottomStatus) {
         ui->labelBottomStatus->setText("系统状态：进入定位模式");
     }
 
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：定位模式");
-    }
     if (ui->btnPauseTask)
         ui->btnPauseTask->setEnabled(true);
     if (ui->btnContinueTask)
@@ -1937,63 +1927,28 @@ void MainWindow::onContinueTaskClicked()
         return;
     }
 
-    setRobotState(Running);
+    currentState_ = Running;
     feedback_.paused = false;
     feedback_.charging = false;
-
+    feedback_.vehicleStatus = "作业中";
+    feedback_.modeText = "导航模式";
     feedback_.linearSpeed = 0.80;
     feedback_.angularSpeed = 0.10;
 
-    if (ui->labelBottomStatus) {
-        ui->labelBottomStatus->setText("系统状态：任务已继续");
-    }
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：导航模式");
+    if (feedback_.currentTask.isEmpty() || feedback_.currentTask == "空闲") {
+        feedback_.currentTask = "导航中";
     }
 
     applyFeedbackToUi();
 
-    if (ui->btnPauseTask)
-        ui->btnPauseTask->setEnabled(true);
-    if (ui->btnContinueTask)
-        ui->btnContinueTask->setEnabled(false);
-}
-
-void MainWindow::onBackChargeClicked()
-{
-    if (ui->labelRosStatus) {
-        ui->labelRosStatus->setText("已连接");
-    }
-
-    if (ui->labelRobotStatus) {
-        ui->labelRobotStatus->setText("回充中");
-    }
-
-    if (ui->labelTask) {
-        ui->labelTask->setText("回充");
-    }
-
-    if (ui->labelModeValue) {
-        ui->labelModeValue->setText("回充模式");
-    }
-
-    if (ui->labelSpeedValue) {
-        ui->labelSpeedValue->setText("0.50 m/s");
-    }
-
     if (ui->labelBottomStatus) {
-        ui->labelBottomStatus->setText("系统状态：开始回充");
+        ui->labelBottomStatus->setText("系统状态：任务已继续");
     }
 
-    if (ui->labelBottomInfo) {
-        ui->labelBottomInfo->setText("模式：回充模式");
-    }
     if (ui->btnPauseTask)
         ui->btnPauseTask->setEnabled(true);
     if (ui->btnContinueTask)
         ui->btnContinueTask->setEnabled(false);
-    if (ui->btnStopTask)
-        ui->btnStopTask->setEnabled(true);
 }
 
 void MainWindow::onFitViewClicked()
@@ -2494,8 +2449,29 @@ void MainWindow::enterChargingMode()
 
 void MainWindow::setBatteryText(const QString &text)
 {
+    QString displayText = text.trimmed();
+    QString numberText = displayText;
+    numberText.remove('%');
+
+    bool ok = false;
+    int percent = numberText.toInt(&ok);
+    if (ok) {
+        if (percent < 0) {
+            percent = 0;
+        }
+        if (percent > 100) {
+            percent = 100;
+        }
+        feedback_.batteryPercent = percent;
+        displayText = QString("%1%").arg(percent);
+    }
+
     if (ui->labelBattery) {
-        ui->labelBattery->setText(text);
+        ui->labelBattery->setText(displayText);
+    }
+
+    if (monitor_battery_value_) {
+        monitor_battery_value_->setText(displayText);
     }
 }
 
@@ -2504,6 +2480,15 @@ void MainWindow::applyFeedbackToUi()
     if (!ui) {
         return;
     }
+
+    const QString batteryText = QString("%1%").arg(feedback_.batteryPercent);
+    const QString speedText = QString("v:%1  w:%2")
+                                  .arg(feedback_.linearSpeed, 0, 'f', 2)
+                                  .arg(feedback_.angularSpeed, 0, 'f', 2);
+    const QString poseText = QString("X:%1  Y:%2  Yaw:%3")
+                                 .arg(feedback_.posX, 0, 'f', 2)
+                                 .arg(feedback_.posY, 0, 'f', 2)
+                                 .arg(feedback_.yaw, 0, 'f', 2);
 
     if (ui->labelRosStatus) {
         ui->labelRosStatus->setText(feedback_.rosConnected ? "已连接" : "未连接");
@@ -2532,47 +2517,70 @@ void MainWindow::applyFeedbackToUi()
         ui->labelModeValue->setText(feedback_.modeText);
     }
 
-    setBatteryText(QString("%1%").arg(feedback_.batteryPercent));
+    if (ui->labelBattery) {
+        ui->labelBattery->setText(batteryText);
+    }
 
     if (ui->labelSpeedValue) {
-        ui->labelSpeedValue->setText(
-            QString("%1 m/s").arg(feedback_.linearSpeed, 0, 'f', 2));
+        ui->labelSpeedValue->setText(speedText);
     }
 
     if (ui->labelPoseValue) {
-        ui->labelPoseValue->setText(
-            QString("X:%1  Y:%2  Yaw:%3")
-                .arg(feedback_.posX, 0, 'f', 2)
-                .arg(feedback_.posY, 0, 'f', 2)
-                .arg(feedback_.yaw, 0, 'f', 2));
+        ui->labelPoseValue->setText(poseText);
     }
 
     if (ui->labelBottomPose) {
         ui->labelBottomPose->setText(
-            QString("当前位置： %1,%2")
+            QString("当前位置：%1,%2")
                 .arg(feedback_.posX, 0, 'f', 2)
                 .arg(feedback_.posY, 0, 'f', 2));
+    }
 
-        if (ui->progressNav) {
-            if (feedback_.totalWaypoints > 0) {
-                ui->progressNav->setMaximum(feedback_.totalWaypoints);
-                ui->progressNav->setValue(feedback_.currentWaypointIndex + 1);
-            } else {
-                ui->progressNav->setMaximum(100);
-                ui->progressNav->setValue(0);
-            }
+    if (ui->labelBottomInfo) {
+        ui->labelBottomInfo->setText(QString("模式：%1").arg(feedback_.modeText));
+    }
+
+    if (monitor_x_value_) {
+        monitor_x_value_->setText(QString::number(feedback_.posX, 'f', 2));
+    }
+    if (monitor_y_value_) {
+        monitor_y_value_->setText(QString::number(feedback_.posY, 'f', 2));
+    }
+    if (monitor_yaw_value_) {
+        monitor_yaw_value_->setText(QString::number(feedback_.yaw, 'f', 2));
+    }
+    if (monitor_linear_vel_value_) {
+        monitor_linear_vel_value_->setText(QString::number(feedback_.linearSpeed, 'f', 2));
+    }
+    if (monitor_angular_vel_value_) {
+        monitor_angular_vel_value_->setText(QString::number(feedback_.angularSpeed, 'f', 2));
+    }
+    if (monitor_battery_value_) {
+        monitor_battery_value_->setText(batteryText);
+    }
+    if (monitor_status_value_) {
+        monitor_status_value_->setText(feedback_.vehicleStatus);
+    }
+
+    if (ui->progressNav) {
+        if (feedback_.totalWaypoints > 0) {
+            ui->progressNav->setMaximum(feedback_.totalWaypoints);
+            ui->progressNav->setValue(feedback_.currentWaypointIndex + 1);
+        } else {
+            ui->progressNav->setMaximum(100);
+            ui->progressNav->setValue(0);
         }
+    }
 
-        if (ui->labelNavProgress) {
-            if (feedback_.totalWaypoints > 0 &&
-                feedback_.currentWaypointIndex >= 0) {
-                ui->labelNavProgress->setText(
-                    QString("导航进度：%1/%2")
-                        .arg(feedback_.currentWaypointIndex + 1)
-                        .arg(feedback_.totalWaypoints));
-            } else {
-                ui->labelNavProgress->setText("导航进度：0/0");
-            }
+    if (ui->labelNavProgress) {
+        if (feedback_.totalWaypoints > 0 &&
+            feedback_.currentWaypointIndex >= 0) {
+            ui->labelNavProgress->setText(
+                QString("导航进度：%1/%2")
+                    .arg(feedback_.currentWaypointIndex + 1)
+                    .arg(feedback_.totalWaypoints));
+        } else {
+            ui->labelNavProgress->setText("导航进度：0/0");
         }
     }
 }
