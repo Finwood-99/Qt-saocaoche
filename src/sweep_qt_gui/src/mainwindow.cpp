@@ -1684,15 +1684,23 @@ void MainWindow::onAgvStatusMessage(const sweep_interfaces::msg::AgvStatus::Shar
     const QString task = extractTextByKeys(
         text, {"current_task", "task", "task_name"});
 
+    // 只更新收到的字段，不要重置未收到的字段
     if (!status.isEmpty()) {
-        setVehicleStatusText(status);
+        feedback_.vehicleStatus = status;
     }
     if (!battery.isEmpty()) {
-        setBatteryText(battery);
+        bool ok;
+        double batteryPercent = battery.toDouble(&ok);
+        if (ok) {
+            feedback_.batteryPercent = batteryPercent;
+        }
     }
     if (!task.isEmpty()) {
-        setCurrentTaskText(task);
+        feedback_.currentTask = task;
     }
+
+    // 统一通过 applyFeedbackToUi() 更新界面
+    applyFeedbackToUi();
 }
 #else
 void MainWindow::onAgvStatusMessage(const std_msgs::msg::String::SharedPtr msg)
@@ -1701,19 +1709,10 @@ void MainWindow::onAgvStatusMessage(const std_msgs::msg::String::SharedPtr msg)
     const QString text = QString::fromStdString(msg->data).trimmed();
 
     if (!text.isEmpty() && !text.contains('=') && !text.contains(':')) {
-        setVehicleStatusText(text);
-        setCurrentTaskText(text);
-        if (monitor_status_value_) {
-            monitor_status_value_->setText(text);
-        }
-
-        if (ui->labelModeValue) {
-            setRobotState(Idle);
-        }
-
-        if (ui->labelBottomStatus) {
-            ui->labelBottomStatus->setText("系统状态：正常");
-        }
+        feedback_.vehicleStatus = text;
+        feedback_.currentTask = text;
+        // 统一通过 applyFeedbackToUi() 更新界面
+        applyFeedbackToUi();
         return;
     }
 
@@ -1724,29 +1723,29 @@ void MainWindow::onAgvStatusMessage(const std_msgs::msg::String::SharedPtr msg)
     const QString task = extractTextByKeys(
         text, {"current_task", "task", "task_name"});
 
+    // 只更新收到的字段，不要重置未收到的字段
     if (!status.isEmpty()) {
-        setVehicleStatusText(status);
-        setCurrentTaskText(status);
-        if (monitor_status_value_) {
-            monitor_status_value_->setText(status);
-        }
+        feedback_.vehicleStatus = status;
+        feedback_.currentTask = status;
     }
     if (!battery.isEmpty()) {
-        setBatteryText(battery.endsWith('%') ? battery : battery + "%");
+        bool ok;
+        double batteryPercent = battery.toDouble(&ok);
+        if (ok) {
+            feedback_.batteryPercent = batteryPercent;
+        } else if (battery.endsWith('%')) {
+            double percent = battery.left(battery.length() - 1).toDouble(&ok);
+            if (ok) {
+                feedback_.batteryPercent = percent;
+            }
+        }
     }
     if (!task.isEmpty()) {
-        setCurrentTaskText(task);
+        feedback_.currentTask = task;
     }
 
-    if (ui->labelModeValue) {
-        setRobotState(Idle);
-    }
-
-    if (ui->labelBottomStatus) {
-        ui->labelBottomStatus->setText("系统状态：正常");
-    }
-
-    updateBatteryDisplay();
+    // 统一通过 applyFeedbackToUi() 更新界面
+    applyFeedbackToUi();
 }
 #endif
 
@@ -1760,37 +1759,40 @@ void MainWindow::onAgvTelemetryMessage(const sweep_interfaces::msg::AgvTelemetry
     bool ok = false;
 
     const double x = extractDoubleByKeys(text, {"x", "pos_x"}, &ok);
-    if (ok && monitor_x_value_) {
-        monitor_x_value_->setText(QString::number(x, 'f', 2));
+    if (ok) {
+        feedback_.posX = x;
     }
 
     const double y = extractDoubleByKeys(text, {"y", "pos_y"}, &ok);
-    if (ok && monitor_y_value_) {
-        monitor_y_value_->setText(QString::number(y, 'f', 2));
+    if (ok) {
+        feedback_.posY = y;
     }
 
     const double yaw = extractDoubleByKeys(text, {"yaw", "theta"}, &ok);
-    if (ok && monitor_yaw_value_) {
-        monitor_yaw_value_->setText(QString::number(yaw, 'f', 2));
+    if (ok) {
+        feedback_.yaw = yaw;
     }
 
     const double linearVel = extractDoubleByKeys(
         text, {"linear_velocity", "linear_vel", "vx", "speed"}, &ok);
-    if (ok && monitor_linear_vel_value_) {
-        monitor_linear_vel_value_->setText(QString::number(linearVel, 'f', 2));
+    if (ok) {
+        feedback_.linearSpeed = linearVel;
     }
 
     const double angularVel = extractDoubleByKeys(
         text, {"angular_velocity", "angular_vel", "wz", "yaw_rate"}, &ok);
-    if (ok && monitor_angular_vel_value_) {
-        monitor_angular_vel_value_->setText(QString::number(angularVel, 'f', 2));
+    if (ok) {
+        feedback_.angularSpeed = angularVel;
     }
 
     const double battery = extractDoubleByKeys(
         text, {"battery", "battery_percent", "battery_percentage"}, &ok);
     if (ok) {
-        setBatteryText(QString::number(battery, 'f', 0) + "%");
+        feedback_.batteryPercent = battery;
     }
+
+    // 统一通过 applyFeedbackToUi() 更新界面
+    applyFeedbackToUi();
 }
 #else
 void MainWindow::onAgvTelemetryMessage(const std_msgs::msg::String::SharedPtr msg)
@@ -1805,85 +1807,46 @@ void MainWindow::onAgvTelemetryMessage(const std_msgs::msg::String::SharedPtr ms
     bool batteryOk = false;
 
     const double x = extractDoubleByKeys(text, {"x", "pos_x"}, &xOk);
+    if (xOk) {
+        feedback_.posX = x;
+    }
+
     const double y = extractDoubleByKeys(text, {"y", "pos_y"}, &yOk);
+    if (yOk) {
+        feedback_.posY = y;
+    }
+
     const double yaw = extractDoubleByKeys(text, {"yaw", "theta"}, &yawOk);
+    if (yawOk) {
+        feedback_.yaw = yaw;
+    }
 
     const double linearVel = extractDoubleByKeys(
         text, {"linear", "linear_velocity", "linear_vel", "vx", "speed"}, &linearOk);
+    if (linearOk) {
+        feedback_.linearSpeed = linearVel;
+    }
 
     const double angularVel = extractDoubleByKeys(
         text, {"angular", "angular_velocity", "angular_vel", "wz", "yaw_rate"}, &angularOk);
+    if (angularOk) {
+        feedback_.angularSpeed = angularVel;
+    }
 
     const double battery = extractDoubleByKeys(
         text, {"battery", "battery_percent", "battery_percentage"}, &batteryOk);
-
-    if (xOk && monitor_x_value_) {
-        monitor_x_value_->setText(QString::number(x, 'f', 2));
-    }
-    if (yOk && monitor_y_value_) {
-        monitor_y_value_->setText(QString::number(y, 'f', 2));
-    }
-    if (yawOk && monitor_yaw_value_) {
-        monitor_yaw_value_->setText(QString::number(yaw, 'f', 2));
-    }
-
-    if (linearOk && monitor_linear_vel_value_) {
-        monitor_linear_vel_value_->setText(QString::number(linearVel, 'f', 2));
-    }
-    if (angularOk && monitor_angular_vel_value_) {
-        monitor_angular_vel_value_->setText(QString::number(angularVel, 'f', 2));
-    }
-
     if (batteryOk) {
-        const QString batteryText = QString::number(battery, 'f', 0) + "%";
-        setBatteryText(batteryText);
-        if (monitor_battery_value_) {
-            monitor_battery_value_->setText(batteryText);
-        }
+        feedback_.batteryPercent = battery;
     }
 
     const QString status = extractTextByKeys(
         text, {"status", "vehicle_status", "robot_status", "state", "current_status"});
     if (!status.isEmpty()) {
-        setVehicleStatusText(status);
-        if (monitor_status_value_) {
-            monitor_status_value_->setText(status);
-        }
+        feedback_.vehicleStatus = status;
     }
 
-    // 右侧系统信息面板新增字段
-    if (ui->labelSpeedValue) {
-        QString speedText = "--";
-        if (linearOk && angularOk) {
-            speedText = QString("v:%1  w:%2")
-                            .arg(QString::number(linearVel, 'f', 2),
-                                 QString::number(angularVel, 'f', 2));
-        } else if (linearOk) {
-            speedText = QString("v:%1").arg(QString::number(linearVel, 'f', 2));
-        }
-        ui->labelSpeedValue->setText(speedText);
-    }
-
-    if (ui->labelPoseValue) {
-        QString poseText = "--";
-        if (xOk && yOk && yawOk) {
-            poseText = QString("x:%1  y:%2  yaw:%3")
-                           .arg(QString::number(x, 'f', 2),
-                                QString::number(y, 'f', 2),
-                                QString::number(yaw, 'f', 2));
-        }
-        ui->labelPoseValue->setText(poseText);
-    }
-
-    if (ui->labelBottomPose) {
-        QString bottomPose = "当前位置：--";
-        if (xOk && yOk) {
-            bottomPose = QString("当前位置：%1,%2")
-                             .arg(QString::number(x, 'f', 2),
-                                  QString::number(y, 'f', 2));
-        }
-        ui->labelBottomPose->setText(bottomPose);
-    }
+    // 统一通过 applyFeedbackToUi() 更新界面
+    applyFeedbackToUi();
 }
 #endif
 
