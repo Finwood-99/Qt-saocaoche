@@ -608,7 +608,8 @@ void MainWindow::initRos()
         std::bind(&MainWindow::onAgvTelemetryMessage, this, std::placeholders::_1));
 #endif
 
-    setRos2StatusText("已连接");
+    feedback_.rosConnected = true;
+    applyFeedbackToUi();
 }
 
 void MainWindow::initUi()
