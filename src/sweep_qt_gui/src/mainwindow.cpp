@@ -146,6 +146,32 @@ namespace
         return label;
     }
 
+    // 根据状态文本保守地推断状态机状态，返回是否成功识别
+    bool inferRobotStateFromStatus(const QString &statusText, MainWindow::RobotState &outState)
+    {
+        const QString lower = statusText.toLower().trimmed();
+
+        // 只识别明确的状态，避免误判
+        if (lower.contains("待机") || lower.contains("idle") || lower.contains("standby")) {
+            outState = MainWindow::Idle;
+            return true;
+        }
+        if (lower.contains("作业中") || lower.contains("running") || lower.contains("working") || lower.contains("sweeping")) {
+            outState = MainWindow::Running;
+            return true;
+        }
+        if (lower.contains("暂停") || lower.contains("paused")) {
+            outState = MainWindow::Paused;
+            return true;
+        }
+        if (lower.contains("充电") || lower.contains("charging") || lower.contains("回充")) {
+            outState = MainWindow::Charging;
+            return true;
+        }
+
+        return false;
+    }
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -1687,7 +1713,37 @@ void MainWindow::onAgvStatusMessage(const sweep_interfaces::msg::AgvStatus::Shar
     // 只更新收到的字段，不要重置未收到的字段
     if (!status.isEmpty()) {
         feedback_.vehicleStatus = status;
+
+        // 尝试根据状态文本推断状态机状态
+        RobotState inferredState;
+        if (inferRobotStateFromStatus(status, inferredState)) {
+            currentState_ = inferredState;
+            // 同步对应的 feedback_ 字段
+            switch (inferredState) {
+                case Idle:
+                    feedback_.modeText = "地图与路径";
+                    feedback_.charging = false;
+                    feedback_.paused = false;
+                    break;
+                case Running:
+                    feedback_.modeText = "导航模式";
+                    feedback_.charging = false;
+                    feedback_.paused = false;
+                    break;
+                case Paused:
+                    feedback_.modeText = "任务暂停";
+                    feedback_.charging = false;
+                    feedback_.paused = true;
+                    break;
+                case Charging:
+                    feedback_.modeText = "充电模式";
+                    feedback_.charging = true;
+                    feedback_.paused = false;
+                    break;
+            }
+        }
     }
+
     if (!battery.isEmpty()) {
         bool ok;
         double batteryPercent = battery.toDouble(&ok);
@@ -1695,6 +1751,7 @@ void MainWindow::onAgvStatusMessage(const sweep_interfaces::msg::AgvStatus::Shar
             feedback_.batteryPercent = batteryPercent;
         }
     }
+
     if (!task.isEmpty()) {
         feedback_.currentTask = task;
     }
@@ -1708,9 +1765,39 @@ void MainWindow::onAgvStatusMessage(const std_msgs::msg::String::SharedPtr msg)
     qDebug() << "[ROS STATUS] received";
     const QString text = QString::fromStdString(msg->data).trimmed();
 
+    // 简单文本：直接作为 vehicleStatus，不混淆 currentTask
     if (!text.isEmpty() && !text.contains('=') && !text.contains(':')) {
         feedback_.vehicleStatus = text;
-        feedback_.currentTask = text;
+
+        // 尝试根据状态文本推断状态机状态
+        RobotState inferredState;
+        if (inferRobotStateFromStatus(text, inferredState)) {
+            currentState_ = inferredState;
+            // 同步对应的 feedback_ 字段
+            switch (inferredState) {
+                case Idle:
+                    feedback_.modeText = "地图与路径";
+                    feedback_.charging = false;
+                    feedback_.paused = false;
+                    break;
+                case Running:
+                    feedback_.modeText = "导航模式";
+                    feedback_.charging = false;
+                    feedback_.paused = false;
+                    break;
+                case Paused:
+                    feedback_.modeText = "任务暂停";
+                    feedback_.charging = false;
+                    feedback_.paused = true;
+                    break;
+                case Charging:
+                    feedback_.modeText = "充电模式";
+                    feedback_.charging = true;
+                    feedback_.paused = false;
+                    break;
+            }
+        }
+
         // 统一通过 applyFeedbackToUi() 更新界面
         applyFeedbackToUi();
         return;
@@ -1726,8 +1813,37 @@ void MainWindow::onAgvStatusMessage(const std_msgs::msg::String::SharedPtr msg)
     // 只更新收到的字段，不要重置未收到的字段
     if (!status.isEmpty()) {
         feedback_.vehicleStatus = status;
-        feedback_.currentTask = status;
+
+        // 尝试根据状态文本推断状态机状态
+        RobotState inferredState;
+        if (inferRobotStateFromStatus(status, inferredState)) {
+            currentState_ = inferredState;
+            // 同步对应的 feedback_ 字段
+            switch (inferredState) {
+                case Idle:
+                    feedback_.modeText = "地图与路径";
+                    feedback_.charging = false;
+                    feedback_.paused = false;
+                    break;
+                case Running:
+                    feedback_.modeText = "导航模式";
+                    feedback_.charging = false;
+                    feedback_.paused = false;
+                    break;
+                case Paused:
+                    feedback_.modeText = "任务暂停";
+                    feedback_.charging = false;
+                    feedback_.paused = true;
+                    break;
+                case Charging:
+                    feedback_.modeText = "充电模式";
+                    feedback_.charging = true;
+                    feedback_.paused = false;
+                    break;
+            }
+        }
     }
+
     if (!battery.isEmpty()) {
         bool ok;
         double batteryPercent = battery.toDouble(&ok);
@@ -1740,6 +1856,7 @@ void MainWindow::onAgvStatusMessage(const std_msgs::msg::String::SharedPtr msg)
             }
         }
     }
+
     if (!task.isEmpty()) {
         feedback_.currentTask = task;
     }
