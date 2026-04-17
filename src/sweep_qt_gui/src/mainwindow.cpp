@@ -245,7 +245,6 @@ MainWindow::MainWindow(QWidget *parent)
     initParamsPage();
     initCodePages();
 
-    feedback_.rosConnected = false;
     feedback_.vehicleStatus = "待机";
     feedback_.currentTask = "空闲";
     feedback_.modeText = "地图与路径";
@@ -766,7 +765,6 @@ void MainWindow::initUi()
 
     updateMapViewButtons(true);
 
-    feedback_.rosConnected = false;
     feedback_.vehicleStatus = "待机";
     feedback_.currentTask = "空闲";
     feedback_.modeText = "地图与路径";
