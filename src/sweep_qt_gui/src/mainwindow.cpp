@@ -146,6 +146,8 @@ namespace
         return label;
     }
 
+    qint64 g_lastTelemetrySpeedMs = 0;
+
     // 根据状态文本保守地推断状态机状态，返回是否成功识别
     bool inferRobotStateFromStatus(const QString &statusText, MainWindow::RobotState &outState)
     {
@@ -1949,6 +1951,10 @@ void MainWindow::onAgvTelemetryMessage(const std_msgs::msg::String::SharedPtr ms
         feedback_.angularSpeed = angularVel;
     }
 
+    if (linearOk || angularOk) {
+        g_lastTelemetrySpeedMs = QDateTime::currentMSecsSinceEpoch();
+    }
+
     const double battery = extractDoubleByKeys(
         text, {"battery", "battery_percent", "battery_percentage"}, &batteryOk);
     if (batteryOk) {
@@ -2740,6 +2746,10 @@ void MainWindow::setFeedbackPaused(bool paused)
 
 void MainWindow::updateSimulatedFeedback()
 {
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const bool keepRealTelemetrySpeed =
+        (g_lastTelemetrySpeedMs > 0 && (nowMs - g_lastTelemetrySpeedMs) < 5000);
+
     if (!useSimulatedFeedback_) {
         return;
     }
@@ -2749,24 +2759,32 @@ void MainWindow::updateSimulatedFeedback()
             feedback_.batteryPercent -= 2;
         }
 
-        feedback_.linearSpeed = 0.80;
-        feedback_.angularSpeed = 0.10;
+        if (!keepRealTelemetrySpeed) {
+            feedback_.linearSpeed = 0.80;
+            feedback_.angularSpeed = 0.10;
+        }
 
     } else if (feedback_.charging || currentState_ == Charging) {
         if (feedback_.batteryPercent < 100) {
             feedback_.batteryPercent += 5;
         }
 
-        feedback_.linearSpeed = 0.00;
-        feedback_.angularSpeed = 0.00;
+        if (!keepRealTelemetrySpeed) {
+            feedback_.linearSpeed = 0.00;
+            feedback_.angularSpeed = 0.00;
+        }
 
     } else if (feedback_.paused || currentState_ == Paused) {
-        feedback_.linearSpeed = 0.00;
-        feedback_.angularSpeed = 0.00;
+        if (!keepRealTelemetrySpeed) {
+            feedback_.linearSpeed = 0.00;
+            feedback_.angularSpeed = 0.00;
+        }
 
     } else {
-        feedback_.linearSpeed = 0.00;
-        feedback_.angularSpeed = 0.00;
+        if (!keepRealTelemetrySpeed) {
+            feedback_.linearSpeed = 0.00;
+            feedback_.angularSpeed = 0.00;
+        }
     }
 
     if (feedback_.batteryPercent <= 20 && !feedback_.charging && currentState_ == Running) {
