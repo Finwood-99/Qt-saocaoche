@@ -146,40 +146,6 @@ namespace
         return label;
     }
 
-    // 根据状态文本保守地推断状态机状态，返回是否成功识别
-    bool inferRobotStateFromStatus(const QString &statusText, MainWindow::RobotState &outState)
-    {
-        const QString lower = statusText.toLower().trimmed();
-
-        // 只识别明确的状态，避免误判
-        if (lower.contains("待机") || lower.contains("idle") || lower.contains("standby")) {
-            outState = MainWindow::Idle;
-            return true;
-        }
-        if (lower.contains("作业中") || lower.contains("running") || lower.contains("working") || lower.contains("sweeping")) {
-            outState = MainWindow::Running;
-            return true;
-        }
-        if (lower.contains("暂停") || lower.contains("paused")) {
-            outState = MainWindow::Paused;
-            return true;
-        }
-        if (lower.contains("充电") || lower.contains("charging") || lower.contains("回充")) {
-            outState = MainWindow::Charging;
-            return true;
-        }
-
-        return false;
-    }
-
-} // namespace
-
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow)
-{
-    ui->setupUi(this);
-
-    ui->mapStack->setCurrentWidget(ui->pageMap2D);
     initMapView();
     init3DView();
 
@@ -2445,6 +2411,31 @@ void MainWindow::setRobotState(RobotState state)
     }
 
     applyFeedbackToUi();
+}
+
+bool MainWindow::inferRobotStateFromStatus(const QString &statusText, RobotState &outState)
+{
+    const QString lower = statusText.toLower().trimmed();
+
+    // 只识别明确的状态，避免误判
+    if (lower.contains("待机") || lower.contains("idle") || lower.contains("standby")) {
+        outState = Idle;
+        return true;
+    }
+    if (lower.contains("作业中") || lower.contains("running") || lower.contains("working") || lower.contains("sweeping")) {
+        outState = Running;
+        return true;
+    }
+    if (lower.contains("暂停") || lower.contains("paused")) {
+        outState = Paused;
+        return true;
+    }
+    if (lower.contains("充电") || lower.contains("charging") || lower.contains("回充")) {
+        outState = Charging;
+        return true;
+    }
+
+    return false;
 }
 
 void MainWindow::initBatterySystem()

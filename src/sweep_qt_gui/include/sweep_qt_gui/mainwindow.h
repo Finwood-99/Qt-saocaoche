@@ -107,15 +107,13 @@ private slots:
 
     void onMultiGoalNavClicked();
 
-public:
+private:
     enum RobotState {
         Idle,
         Running,
         Paused,
         Charging
     };
-
-private:
     struct AgvFeedback {
         bool rosConnected = false;
 
