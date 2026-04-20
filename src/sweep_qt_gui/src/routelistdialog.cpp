@@ -180,3 +180,7 @@ void RouteListDialog::startMultiNavDirectly()
 {
     onStartMultiNavClicked();
 }
+
+#rosbag / large data
+*.mcap rosbag2_ * /
+    src / sweep_qt_gui / maps / rosbag2_ * /

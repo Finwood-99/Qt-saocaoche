@@ -25,6 +25,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStyle>
 #include <QTextEdit>
 #include <QTextStream>
 #include <QTimer>
@@ -615,94 +616,6 @@ void MainWindow::initRos()
 
 void MainWindow::initUi()
 {
-    if (ui->listMenu) {
-        ui->listMenu->clear();
-
-        ui->listMenu->addItems(QStringList()
-                               << "首页总览"
-                               << "参数设置"
-                               << "地图与路径"
-                               << "手动控制"
-                               << "状态监控"
-                               << "日志报警");
-
-        QFont menuFont = ui->listMenu->font();
-        menuFont.setPointSize(14);
-        ui->listMenu->setFont(menuFont);
-
-        ui->listMenu->setMinimumWidth(180);
-        ui->listMenu->setStyleSheet(
-            "QListWidget {"
-            "  background-color: white;"
-            "  color: black;"
-            "  border: 1px solid #bfbfbf;"
-            "}"
-            "QListWidget::item {"
-            "  padding: 10px 8px;"
-            "}"
-            "QListWidget::item:selected {"
-            "  background-color: #dbeafe;"
-            "  color: black;"
-            "}");
-
-        if (ui->progressNav) {
-            ui->progressNav->setMinimum(0);
-            ui->progressNav->setMaximum(100);
-            ui->progressNav->setValue(0);
-            ui->progressNav->setFormat("%v/%m");
-        }
-
-        if (ui->labelNavProgress) {
-            ui->labelNavProgress->setText("导航进度：0/0");
-        }
-
-        for (int i = 0; i < ui->listMenu->count(); ++i) {
-            QListWidgetItem *item = ui->listMenu->item(i);
-            if (item) {
-                item->setSizeHint(QSize(item->sizeHint().width(), 42));
-            }
-        }
-
-        connect(ui->listMenu, &QListWidget::currentRowChanged, this,
-                [this](int row) {
-                    if (!ui->stackedWidget) {
-                        return;
-                    }
-
-                    switch (row) {
-                        case 0:
-                            if (ui->pageHome)
-                                ui->stackedWidget->setCurrentWidget(ui->pageHome);
-                            break;
-                        case 1:
-                            if (ui->pageParams)
-                                ui->stackedWidget->setCurrentWidget(ui->pageParams);
-                            break;
-                        case 2:
-                            if (ui->pageMap)
-                                ui->stackedWidget->setCurrentWidget(ui->pageMap);
-                            break;
-                        case 3:
-                            if (ui->pageManual)
-                                ui->stackedWidget->setCurrentWidget(ui->pageManual);
-                            break;
-                        case 4:
-                            if (ui->pageMonitor)
-                                ui->stackedWidget->setCurrentWidget(ui->pageMonitor);
-                            break;
-                        case 5:
-                            if (ui->pageLogs)
-                                ui->stackedWidget->setCurrentWidget(ui->pageLogs);
-                            break;
-                        default:
-                            break;
-                    }
-                });
-
-        // 默认选中“地图与路径”
-        ui->listMenu->setCurrentRow(2);
-    }
-
     if (ui->stackedWidget && ui->pageMap) {
         ui->stackedWidget->setCurrentWidget(ui->pageMap);
     }
@@ -781,6 +694,314 @@ void MainWindow::initUi()
     feedback_.currentWaypointIndex = -1;
     feedback_.totalWaypoints = 0;
 
+    if (ui->manualControlGroup) {
+        ui->manualControlGroup->setStyleSheet(
+            "QGroupBox {"
+            "  font-weight: 700;"
+            "  border: 1px solid #d1d5db;"
+            "  border-radius: 10px;"
+            "  margin-top: 12px;"
+            "  background: #fafafa;"
+            "}"
+            "QGroupBox::title {"
+            "  subcontrol-origin: margin;"
+            "  left: 10px;"
+            "  padding: 0 4px;"
+            "  color: #111827;"
+            "}");
+    }
+
+    if (ui->mapFileGroup) {
+        ui->mapFileGroup->setStyleSheet(
+            "QGroupBox {"
+            "  font-weight: 700;"
+            "  border: 1px solid #d1d5db;"
+            "  border-radius: 10px;"
+            "  margin-top: 12px;"
+            "  background: #fafafa;"
+            "}"
+            "QGroupBox::title {"
+            "  subcontrol-origin: margin;"
+            "  left: 10px;"
+            "  padding: 0 4px;"
+            "  color: #111827;"
+            "}");
+    }
+
+    if (ui->groupBoxStatus) {
+        ui->groupBoxStatus->setStyleSheet(
+            "QGroupBox {"
+            "  font-weight: 700;"
+            "  border: 1px solid #d1d5db;"
+            "  border-radius: 10px;"
+            "  margin-top: 12px;"
+            "  background: #fafafa;"
+            "}"
+            "QGroupBox::title {"
+            "  subcontrol-origin: margin;"
+            "  left: 10px;"
+            "  padding: 0 4px;"
+            "  color: #111827;"
+            "}");
+    }
+
+    const QString manualBtnStyle =
+        "QPushButton {"
+        "  min-width: 78px;"
+        "  min-height: 42px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 8px;"
+        "  background: #f8fafc;"
+        "  color: #0f172a;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #e2e8f0;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #cbd5e1;"
+        "}";
+
+    const QString stopBtnStyle =
+        "QPushButton {"
+        "  min-width: 78px;"
+        "  min-height: 42px;"
+        "  border: 1px solid #fca5a5;"
+        "  border-radius: 8px;"
+        "  background: #fee2e2;"
+        "  color: #b91c1c;"
+        "  font-weight: 800;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #fecaca;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #fca5a5;"
+        "}";
+
+    if (ui->btnForward) {
+        ui->btnForward->setText("↑ 前进");
+        ui->btnForward->setStyleSheet(manualBtnStyle);
+    }
+
+    if (ui->btnBackward) {
+        ui->btnBackward->setText("↓ 后退");
+        ui->btnBackward->setStyleSheet(manualBtnStyle);
+    }
+
+    if (ui->btnLeft) {
+        ui->btnLeft->setText("← 左转");
+        ui->btnLeft->setStyleSheet(manualBtnStyle);
+    }
+
+    if (ui->btnRight) {
+        ui->btnRight->setText("→ 右转");
+        ui->btnRight->setStyleSheet(manualBtnStyle);
+    }
+
+    if (ui->btnStopMove) {
+        ui->btnStopMove->setText("■ 停止");
+        ui->btnStopMove->setStyleSheet(stopBtnStyle);
+    }
+
+    if (ui->mapToolbarWidget) {
+        ui->mapToolbarWidget->setStyleSheet(
+            "background:#f8fafc;"
+            "border:1px solid #dbe3ec;"
+            "border-radius:10px;");
+    }
+
+    if (ui->labelViewModeTitle) {
+        ui->labelViewModeTitle->setStyleSheet(
+            "font-weight:700;"
+            "color:#334155;"
+            "padding-left:6px;");
+    }
+
+    if (ui->labelViewMode) {
+        ui->labelViewMode->setStyleSheet(
+            "padding:2px 8px;"
+            "border-radius:8px;"
+            "background:#eef2ff;"
+            "color:#4338ca;"
+            "font-weight:700;");
+    }
+
+    if (ui->mapFrame) {
+        ui->mapFrame->setStyleSheet(
+            "QFrame#mapFrame {"
+            "  background: #ffffff;"
+            "  border: 1px solid #dbe3ec;"
+            "  border-radius: 12px;"
+            "}");
+    }
+
+    if (ui->mapFileTable) {
+        ui->mapFileTable->setAlternatingRowColors(true);
+        ui->mapFileTable->setStyleSheet(
+            "QTableWidget {"
+            "  background: #ffffff;"
+            "  alternate-background-color: #f8fafc;"
+            "  border: 1px solid #dbe3ec;"
+            "  border-radius: 8px;"
+            "  gridline-color: #e5e7eb;"
+            "  selection-background-color: #dbeafe;"
+            "  selection-color: #1e3a8a;"
+            "}"
+            "QHeaderView::section {"
+            "  background: #f1f5f9;"
+            "  color: #334155;"
+            "  font-weight: 700;"
+            "  border: none;"
+            "  border-right: 1px solid #e5e7eb;"
+            "  border-bottom: 1px solid #e5e7eb;"
+            "  padding: 4px 6px;"
+            "}");
+    }
+
+    if (ui->progressNav) {
+        ui->progressNav->setTextVisible(true);
+        ui->progressNav->setStyleSheet(
+            "QProgressBar {"
+            "  min-height: 20px;"
+            "  border: 1px solid #cbd5e1;"
+            "  border-radius: 10px;"
+            "  background: #f8fafc;"
+            "  text-align: center;"
+            "  font-weight: 700;"
+            "  color: #0f172a;"
+            "}"
+            "QProgressBar::chunk {"
+            "  border-radius: 10px;"
+            "  background: qlineargradient("
+            "      x1:0, y1:0, x2:1, y2:0,"
+            "      stop:0 #93c5fd,"
+            "      stop:1 #2563eb"
+            "  );"
+            "}");
+    }
+
+    if (ui->labelNavProgress) {
+        ui->labelNavProgress->setStyleSheet(
+            "font-weight: 700;"
+            "color: #334155;"
+            "padding-left: 2px;");
+    }
+
+    if (ui->bottomStatusWidget) {
+        ui->bottomStatusWidget->setStyleSheet(
+            "QWidget#bottomStatusWidget {"
+            "  background: #f8fafc;"
+            "  border-top: 1px solid #dbe3ec;"
+            "}");
+    }
+
+    const QString statusNameLabelStyle =
+        "QLabel {"
+        "  color: #475569;"
+        "  font-weight: 600;"
+        "}";
+
+    QList<QLabel *> statusNames = {
+        ui->lRosStatus,
+        ui->lRobotStatus,
+        ui->lBattery,
+        ui->lTask,
+        ui->lSpeedValue,
+        ui->lPoseValue,
+        ui->lModeValue};
+
+    for (auto *label : statusNames) {
+        if (label) {
+            label->setStyleSheet(statusNameLabelStyle);
+        }
+    }
+
+    const QString valueBoxStyle =
+        "QLabel {"
+        "  min-height: 28px;"
+        "  padding: 2px 8px;"
+        "  border: 1px solid #e2e8f0;"
+        "  border-radius: 8px;"
+        "  background: #ffffff;"
+        "  color: #0f172a;"
+        "  font-weight: 700;"
+        "}";
+
+    QList<QLabel *> statusValues = {
+        ui->labelRosStatus,
+        ui->labelRobotStatus,
+        ui->labelBattery,
+        ui->labelTask,
+        ui->labelSpeedValue,
+        ui->labelPoseValue,
+        ui->labelModeValue};
+
+    for (auto *label : statusValues) {
+        if (label) {
+            label->setMinimumHeight(28);
+            label->setStyleSheet(valueBoxStyle);
+        }
+    }
+
+    if (ui->mapFileTable) {
+        ui->mapFileTable->verticalHeader()->setVisible(false);
+        ui->mapFileTable->setSelectionMode(QAbstractItemView::SingleSelection);
+        ui->mapFileTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+        ui->mapFileTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        ui->mapFileTable->horizontalHeader()->setStretchLastSection(true);
+        ui->mapFileTable->horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
+
+        ui->mapFileTable->setColumnWidth(0, 56);
+        ui->mapFileTable->setColumnWidth(1, 120);
+        ui->mapFileTable->setColumnWidth(2, 90);
+    }
+
+    if (auto *centerLayout = qobject_cast<QHBoxLayout *>(ui->centerWidget->layout())) {
+        centerLayout->setSpacing(16);
+        centerLayout->setContentsMargins(0, 0, 0, 0);
+    }
+
+    if (auto *rightLayout = qobject_cast<QVBoxLayout *>(ui->rightInfoWidget->layout())) {
+        rightLayout->setSpacing(12);
+        rightLayout->setContentsMargins(0, 0, 0, 0);
+    }
+
+    if (ui->bottomStatusWidget) {
+        ui->bottomStatusWidget->setStyleSheet(
+            "QWidget#bottomStatusWidget {"
+            "  background: #ffffff;"
+            "  border: 1px solid #dbe3ec;"
+            "  border-radius: 12px;"
+            "}");
+    }
+
+    if (ui->labelBottomStatus) {
+        ui->labelBottomStatus->setMinimumHeight(30);
+    }
+
+    if (ui->labelBottomPose) {
+        ui->labelBottomPose->setMinimumHeight(30);
+        ui->labelBottomPose->setStyleSheet(
+            "padding: 4px 10px;"
+            "border-radius: 8px;"
+            "background: #f8fafc;"
+            "border: 1px solid #e2e8f0;"
+            "font-weight: 600;"
+            "color: #1f2937;");
+    }
+
+    if (ui->labelBottomInfo) {
+        ui->labelBottomInfo->setMinimumHeight(30);
+        ui->labelBottomInfo->setStyleSheet(
+            "padding: 4px 10px;"
+            "border-radius: 8px;"
+            "background: #eef2ff;"
+            "border: 1px solid #c7d2fe;"
+            "font-weight: 700;"
+            "color: #4338ca;");
+    }
+
     applyFeedbackToUi();
 }
 
@@ -821,6 +1042,106 @@ void MainWindow::initTopButtons()
     if (!ui->btnMultiGoalNav) {
         connectButtonByNames({"btnMultiGoalNav"},
                              [this]() { onMultiGoalNavClicked(); });
+    }
+
+    const QString topBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 8px;"
+        "  background: #f8fafc;"
+        "  color: #0f172a;"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #e2e8f0;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #cbd5e1;"
+        "}"
+        "QPushButton:disabled {"
+        "  background: #f1f5f9;"
+        "  color: #94a3b8;"
+        "}";
+
+    const QString primaryBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 8px;"
+        "  background: #dbeafe;"
+        "  color: #1d4ed8;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #bfdbfe;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #93c5fd;"
+        "}";
+
+    QList<QPushButton *> topButtons = {
+        ui->btnConnectRos,
+        ui->btnStartTask,
+        ui->btnLocate,
+        ui->btnPauseTask,
+        ui->btnContinueTask,
+        ui->btnStopTask,
+        ui->btnRouteList,
+        ui->btnMultiGoalNav,
+        ui->btnBackCharge,
+        ui->btnShow2D,
+        ui->btnShow3D};
+
+    for (auto *btn : topButtons) {
+        if (btn) {
+            btn->setStyleSheet(topBtnStyle);
+        }
+    }
+
+    if (ui->btnConnectRos) {
+        ui->btnConnectRos->setStyleSheet(primaryBtnStyle);
+    }
+
+    auto setBtnIcon = [this](QPushButton *btn, QStyle::StandardPixmap iconType) {
+        if (!btn) {
+            return;
+        }
+        btn->setIcon(style()->standardIcon(iconType));
+        btn->setIconSize(QSize(18, 18));
+    };
+
+    setBtnIcon(ui->btnConnectRos, QStyle::SP_DriveNetIcon);
+    setBtnIcon(ui->btnStartTask, QStyle::SP_DirOpenIcon);
+    setBtnIcon(ui->btnLocate, QStyle::SP_FileDialogContentsView);
+    setBtnIcon(ui->btnPauseTask, QStyle::SP_MediaPause);
+    setBtnIcon(ui->btnContinueTask, QStyle::SP_MediaPlay);
+    setBtnIcon(ui->btnStopTask, QStyle::SP_DialogCancelButton);
+    setBtnIcon(ui->btnRouteList, QStyle::SP_FileDialogListView);
+    setBtnIcon(ui->btnMultiGoalNav, QStyle::SP_ArrowRight);
+    setBtnIcon(ui->btnBackCharge, QStyle::SP_BrowserReload);
+    setBtnIcon(ui->btnShow2D, QStyle::SP_FileDialogListView);
+    setBtnIcon(ui->btnShow3D, QStyle::SP_FileDialogDetailedView);
+
+    QList<QPushButton *> topButtonsForIconLayout = {
+        ui->btnConnectRos,
+        ui->btnStartTask,
+        ui->btnLocate,
+        ui->btnPauseTask,
+        ui->btnContinueTask,
+        ui->btnStopTask,
+        ui->btnRouteList,
+        ui->btnMultiGoalNav,
+        ui->btnBackCharge,
+        ui->btnShow2D,
+        ui->btnShow3D};
+
+    for (auto *btn : topButtonsForIconLayout) {
+        if (btn) {
+            btn->setStyleSheet(btn->styleSheet() + " text-align:left; padding-left:8px;");
+        }
     }
 
     qDebug() << "[INIT] initTopButtons finished";
@@ -1244,8 +1565,7 @@ void MainWindow::appendLog(const QString &level, const QString &text)
 
     auto plainEdits = findAllChildren<QPlainTextEdit>(
         this,
-        {"textLog",
-         "pageLogsEdit",
+        {"pageLogsEdit",
          "plainTextEditLogs",
          "plainTextEditLog",
          "logEdit",
@@ -2139,28 +2459,46 @@ void MainWindow::onMap3DClicked()
 
 void MainWindow::updateMapViewButtons(bool is2D)
 {
+    const QString normalStyle =
+        "QPushButton {"
+        "  min-height: 30px;"
+        "  padding: 2px 10px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 8px;"
+        "  background: #ffffff;"
+        "  color: #0f172a;"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #f1f5f9;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #e2e8f0;"
+        "}";
+
+    const QString activeStyle =
+        "QPushButton {"
+        "  min-height: 30px;"
+        "  padding: 2px 10px;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 8px;"
+        "  background: #dbeafe;"
+        "  color: #1d4ed8;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #bfdbfe;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #93c5fd;"
+        "}";
+
     if (ui->btnShow2D) {
-        if (is2D) {
-            ui->btnShow2D->setStyleSheet(
-                "font-weight: 600;"
-                "background-color: #dbeafe;"
-                "border: 1px solid #93c5fd;"
-                "padding: 4px 10px;");
-        } else {
-            ui->btnShow2D->setStyleSheet("");
-        }
+        ui->btnShow2D->setStyleSheet(is2D ? activeStyle : normalStyle);
     }
 
     if (ui->btnShow3D) {
-        if (!is2D) {
-            ui->btnShow3D->setStyleSheet(
-                "font-weight: 600;"
-                "background-color: #dbeafe;"
-                "border: 1px solid #93c5fd;"
-                "padding: 4px 10px;");
-        } else {
-            ui->btnShow3D->setStyleSheet("");
-        }
+        ui->btnShow3D->setStyleSheet(is2D ? normalStyle : activeStyle);
     }
 }
 
@@ -2283,38 +2621,53 @@ void MainWindow::onLeftViewClicked()
 
 void MainWindow::update3DViewButtons(const QString &viewName)
 {
-    auto resetBtn = [](QPushButton *btn) {
-        if (btn)
-            btn->setStyleSheet("");
-    };
+    const QString normalStyle =
+        "QPushButton {"
+        "  min-height: 30px;"
+        "  padding: 2px 10px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 8px;"
+        "  background: #ffffff;"
+        "  color: #0f172a;"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #f1f5f9;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #e2e8f0;"
+        "}";
 
-    auto highlightBtn = [](QPushButton *btn) {
+    const QString activeStyle =
+        "QPushButton {"
+        "  min-height: 30px;"
+        "  padding: 2px 10px;"
+        "  border: 1px solid #86efac;"
+        "  border-radius: 8px;"
+        "  background: #dcfce7;"
+        "  color: #166534;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #bbf7d0;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #86efac;"
+        "}";
+
+    auto applyStyle = [&](QPushButton *btn, bool active) {
         if (btn) {
-            btn->setStyleSheet(
-                "font-weight: 600;"
-                "background-color: #dcfce7;"
-                "border: 1px solid #86efac;"
-                "padding: 4px 10px;");
+            btn->setStyleSheet(active ? activeStyle : normalStyle);
         }
     };
 
-    resetBtn(ui->btnTopView);
-    resetBtn(ui->btnFrontView);
-    resetBtn(ui->btnLeftView);
-    resetBtn(ui->btnRightView);
-    resetBtn(ui->btnIsoView);
-
-    if (viewName == "top") {
-        highlightBtn(ui->btnTopView);
-    } else if (viewName == "front") {
-        highlightBtn(ui->btnFrontView);
-    } else if (viewName == "left") {
-        highlightBtn(ui->btnLeftView);
-    } else if (viewName == "right") {
-        highlightBtn(ui->btnRightView);
-    } else if (viewName == "iso") {
-        highlightBtn(ui->btnIsoView);
-    }
+    applyStyle(ui->btnTopView, viewName == "top");
+    applyStyle(ui->btnFrontView, viewName == "front");
+    applyStyle(ui->btnLeftView, viewName == "left");
+    applyStyle(ui->btnRightView, viewName == "right");
+    applyStyle(ui->btnIsoView, viewName == "iso");
+    applyStyle(ui->btnFitView, false);
+    applyStyle(ui->btnResetView, false);
 }
 
 void MainWindow::onRouteListClicked()
@@ -2581,6 +2934,19 @@ void MainWindow::applyFeedbackToUi()
 
     if (ui->labelRobotStatus) {
         ui->labelRobotStatus->setText(feedback_.vehicleStatus);
+
+        QString statusStyle = "padding:2px 6px; border-radius:6px; font-weight:600;";
+        if (feedback_.vehicleStatus.contains("作业中")) {
+            statusStyle += "background:#dcfce7; color:#166534;";
+        } else if (feedback_.vehicleStatus.contains("暂停")) {
+            statusStyle += "background:#fef3c7; color:#92400e;";
+        } else if (feedback_.vehicleStatus.contains("回充") || feedback_.vehicleStatus.contains("充电")) {
+            statusStyle += "background:#dbeafe; color:#1d4ed8;";
+        } else {
+            statusStyle += "background:#f3f4f6; color:#374151;";
+        }
+
+        ui->labelRobotStatus->setStyleSheet(statusStyle);
     }
 
     if (ui->labelTask) {
@@ -2596,22 +2962,51 @@ void MainWindow::applyFeedbackToUi()
         }
 
         ui->labelTask->setText(taskText);
+        ui->labelTask->setStyleSheet("font-weight:600; color:#111827;");
     }
 
     if (ui->labelModeValue) {
         ui->labelModeValue->setText(feedback_.modeText);
+        ui->labelModeValue->setStyleSheet(
+            "padding:2px 6px;"
+            "border-radius:6px;"
+            "background:#eef2ff;"
+            "color:#4338ca;"
+            "font-weight:600;");
     }
 
     if (ui->labelBattery) {
         ui->labelBattery->setText(batteryText);
+
+        if (feedback_.batteryPercent <= 20) {
+            ui->labelBattery->setStyleSheet("font-weight:700; color:#dc2626;");
+        } else if (feedback_.batteryPercent <= 40) {
+            ui->labelBattery->setStyleSheet("font-weight:600; color:#d97706;");
+        } else {
+            ui->labelBattery->setStyleSheet("font-weight:600; color:#059669;");
+        }
     }
 
     if (ui->labelSpeedValue) {
         ui->labelSpeedValue->setText(speedText);
+        ui->labelSpeedValue->setStyleSheet(
+            "font-weight:600;"
+            "color:#0f172a;"
+            "background:#f8fafc;"
+            "border:1px solid #e2e8f0;"
+            "border-radius:6px;"
+            "padding:2px 6px;");
     }
 
     if (ui->labelPoseValue) {
         ui->labelPoseValue->setText(poseText);
+        ui->labelPoseValue->setStyleSheet(
+            "font-weight:600;"
+            "color:#0f172a;"
+            "background:#f8fafc;"
+            "border:1px solid #e2e8f0;"
+            "border-radius:6px;"
+            "padding:2px 6px;");
     }
 
     if (ui->labelBottomPose) {
@@ -2623,6 +3018,27 @@ void MainWindow::applyFeedbackToUi()
 
     if (ui->labelBottomInfo) {
         ui->labelBottomInfo->setText(QString("模式：%1").arg(feedback_.modeText));
+        ui->labelBottomInfo->setStyleSheet("font-weight:600; color:#4338ca;");
+    }
+
+    if (ui->labelBottomStatus) {
+        QString bottomStyle =
+            "padding:4px 10px;"
+            "border-radius:8px;"
+            "border:1px solid transparent;"
+            "font-weight:700;";
+
+        if (feedback_.vehicleStatus.contains("作业中")) {
+            bottomStyle += "background:#dcfce7; color:#166534; border-color:#86efac;";
+        } else if (feedback_.vehicleStatus.contains("暂停")) {
+            bottomStyle += "background:#fef3c7; color:#92400e; border-color:#fcd34d;";
+        } else if (feedback_.vehicleStatus.contains("回充") || feedback_.vehicleStatus.contains("充电")) {
+            bottomStyle += "background:#dbeafe; color:#1d4ed8; border-color:#93c5fd;";
+        } else {
+            bottomStyle += "background:#f8fafc; color:#374151; border-color:#e2e8f0;";
+        }
+
+        ui->labelBottomStatus->setStyleSheet(bottomStyle);
     }
 
     if (monitor_x_value_) {
@@ -2666,6 +3082,160 @@ void MainWindow::applyFeedbackToUi()
                     .arg(feedback_.totalWaypoints));
         } else {
             ui->labelNavProgress->setText("导航进度：0/0");
+        }
+    }
+
+    const QString topBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 8px;"
+        "  background: #f8fafc;"
+        "  color: #0f172a;"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #e2e8f0;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #cbd5e1;"
+        "}"
+        "QPushButton:disabled {"
+        "  background: #f1f5f9;"
+        "  color: #94a3b8;"
+        "}";
+
+    const QString primaryBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 8px;"
+        "  background: #dbeafe;"
+        "  color: #1d4ed8;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #bfdbfe;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #93c5fd;"
+        "}";
+
+    const QString successBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #86efac;"
+        "  border-radius: 8px;"
+        "  background: #dcfce7;"
+        "  color: #166534;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #bbf7d0;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #86efac;"
+        "}";
+
+    const QString warningBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #fcd34d;"
+        "  border-radius: 8px;"
+        "  background: #fef3c7;"
+        "  color: #92400e;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #fde68a;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #fcd34d;"
+        "}";
+
+    const QString dangerBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #fca5a5;"
+        "  border-radius: 8px;"
+        "  background: #fee2e2;"
+        "  color: #b91c1c;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #fecaca;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #fca5a5;"
+        "}";
+
+    const QString chargeBtnStyle =
+        "QPushButton {"
+        "  min-height: 34px;"
+        "  padding: 4px 12px;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 8px;"
+        "  background: #dbeafe;"
+        "  color: #1d4ed8;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #bfdbfe;"
+        "}"
+        "QPushButton:pressed {"
+        "  background: #93c5fd;"
+        "}";
+
+    QList<QPushButton *> topButtons = {
+        ui->btnConnectRos,
+        ui->btnStartTask,
+        ui->btnLocate,
+        ui->btnPauseTask,
+        ui->btnContinueTask,
+        ui->btnStopTask,
+        ui->btnRouteList,
+        ui->btnMultiGoalNav,
+        ui->btnBackCharge,
+        ui->btnShow2D,
+        ui->btnShow3D};
+
+    for (auto *btn : topButtons) {
+        if (btn) {
+            btn->setStyleSheet(topBtnStyle);
+        }
+    }
+
+    if (ui->btnConnectRos) {
+        ui->btnConnectRos->setStyleSheet(primaryBtnStyle);
+    }
+
+    if (ui->btnStopTask) {
+        ui->btnStopTask->setStyleSheet(dangerBtnStyle);
+    }
+
+    if (currentState_ == Running) {
+        if (ui->btnStartTask && feedback_.currentTask.contains("建图")) {
+            ui->btnStartTask->setStyleSheet(successBtnStyle);
+        }
+        if (ui->btnMultiGoalNav && feedback_.currentTask.contains("多点导航")) {
+            ui->btnMultiGoalNav->setStyleSheet(successBtnStyle);
+        }
+    }
+
+    if (currentState_ == Paused) {
+        if (ui->btnPauseTask) {
+            ui->btnPauseTask->setStyleSheet(warningBtnStyle);
+        }
+    }
+
+    if (currentState_ == Charging || feedback_.currentTask.contains("回充")) {
+        if (ui->btnBackCharge) {
+            ui->btnBackCharge->setStyleSheet(chargeBtnStyle);
         }
     }
 }
