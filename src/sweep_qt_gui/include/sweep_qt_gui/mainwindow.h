@@ -2,6 +2,9 @@
 #define SWEEP_QT_GUI_MAINWINDOW_H
 
 #include <QEvent>
+#include <QGraphicsEllipseItem>
+#include <QGraphicsLineItem>
+#include <QGraphicsPathItem>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QMainWindow>
@@ -12,7 +15,9 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QVTKOpenGLNativeWidget.h>
+#include <QVector>
 #include <QWheelEvent>
+#include <QGraphicsTextItem>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/visualization/pcl_visualizer.h>
@@ -21,7 +26,11 @@
 
 #include <memory>
 
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/occupancy_grid.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 
@@ -137,6 +146,7 @@ private:
 
         int currentWaypointIndex = -1;
         int totalWaypoints = 0;
+        double goalDistance = -1.0;
     };
 
     void setRobotState(RobotState state);
@@ -150,7 +160,7 @@ private:
     QTimer *batteryTimer_ = nullptr;
     bool isCharging_ = false;
 
-    bool useSimulatedFeedback_ = true;
+    bool useSimulatedFeedback_ = false;
     QTimer *simFeedbackTimer_ = nullptr;
 
 private:
@@ -163,10 +173,27 @@ private:
     void setPclCameraView(double px, double py, double pz,
                           double vx, double vy, double vz,
                           double ux, double uy, double uz);
+    void updateRobotPoseOnMap();
+    void updateRobotTrailOnMap();
+    void resetRobotTrailOnMap();
+    void updateGoalDistance();
+    void updateWaypointMarkersOnMap();
+    void clearWaypointMarkersOnMap();
+    void highlightCurrentWaypointOnMap(int index);
 
 private:
     QGraphicsScene *mapScene_ = nullptr;
     QGraphicsPixmapItem *mapPixmapItem_ = nullptr;
+    QGraphicsPathItem *planPathItem_ = nullptr;
+    QGraphicsEllipseItem *robotPoseItem_ = nullptr;
+    QGraphicsLineItem *robotHeadingItem_ = nullptr;
+    QGraphicsPathItem *robotTrailItem_ = nullptr;
+    QGraphicsEllipseItem *planStartItem_ = nullptr;
+    QGraphicsEllipseItem *planGoalItem_ = nullptr;
+    QVector<QGraphicsEllipseItem *> waypointMarkerItems_;
+    QVector<QGraphicsTextItem *> waypointTextItems_;
+    int highlightedWaypointIndex_ = -1;
+    bool useRosMap_ = true;
 
     QString mapImagePath_;
     double mapResolution_ = 0.05;
@@ -175,6 +202,9 @@ private:
 
     double mapScaleFactor_ = 1.0;
     bool mapUserZoomed_ = false;
+
+    QPainterPath robotTrailPath_;
+    bool robotTrailStarted_ = false;
 
     QVTKOpenGLNativeWidget *vtkWidget_ = nullptr;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> vtkRenderWindow_;
@@ -240,6 +270,10 @@ private:
 
     void connectButtonByNames(const QStringList &names, const std::function<void()> &fn);
     void bindManualButton(const QStringList &names, const std::function<void()> &fn);
+    void onOdomMessage(const nav_msgs::msg::Odometry::SharedPtr msg);
+    void onAmclPoseMessage(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
+    void onPlanMessage(const nav_msgs::msg::Path::SharedPtr msg);
+    void onMapMessage(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
 
 #if SWEEP_HAS_AGV_STATUS
     void onAgvStatusMessage(const sweep_interfaces::msg::AgvStatus::SharedPtr msg);
@@ -255,6 +289,8 @@ private:
 
 private:
     RouteListDialog *routeDialog_ = nullptr;
+    QVector<QPointF> routeWaypointPoints_;
+    QStringList routeWaypointNames_;
     Ui::MainWindow *ui;
 
     QTimer *ros_spin_timer_ = nullptr;
@@ -269,6 +305,10 @@ private:
 #else
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_sub_;
 #endif
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr plan_sub_;
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr amcl_pose_sub_;
 
 #if SWEEP_HAS_AGV_TELEMETRY
     rclcpp::Subscription<sweep_interfaces::msg::AgvTelemetry>::SharedPtr telemetry_sub_;

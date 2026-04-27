@@ -79,6 +79,7 @@ void RouteListDialog::loadMockData()
     waypoints_.push_back({"终点", 5.00, 6.20, "待执行"});
 
     refreshTable();
+    emit waypointListChanged();
 }
 
 void RouteListDialog::onAddPointClicked()
@@ -86,6 +87,7 @@ void RouteListDialog::onAddPointClicked()
     const int index = waypoints_.size() + 1;
     waypoints_.push_back({QString("新点位%1").arg(index), 0.00, 0.00, "待执行"});
     refreshTable();
+    emit waypointListChanged();
 }
 
 void RouteListDialog::onRemovePointClicked()
@@ -94,6 +96,7 @@ void RouteListDialog::onRemovePointClicked()
     if (row >= 0 && row < waypoints_.size()) {
         waypoints_.removeAt(row);
         refreshTable();
+        emit waypointListChanged();
     }
 }
 
@@ -181,6 +184,25 @@ void RouteListDialog::startMultiNavDirectly()
     onStartMultiNavClicked();
 }
 
-#rosbag / large data
-*.mcap rosbag2_ * /
-    src / sweep_qt_gui / maps / rosbag2_ * /
+QVector<QPointF> RouteListDialog::waypointPoints() const
+{
+    QVector<QPointF> result;
+    result.reserve(waypoints_.size());
+
+    for (const auto &wp : waypoints_) {
+        result.push_back(QPointF(wp.x, wp.y));
+    }
+
+    return result;
+}
+
+QStringList RouteListDialog::waypointNames() const
+{
+    QStringList result;
+
+    for (const auto &wp : waypoints_) {
+        result.push_back(wp.name);
+    }
+
+    return result;
+}

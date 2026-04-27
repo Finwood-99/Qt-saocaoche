@@ -37,8 +37,8 @@
 #include <vtkRenderer.h>
 #include <vtkRendererCollection.h>
 
+#include <cmath>
 #include <functional>
-
 #include <rosidl_runtime_cpp/traits.hpp>
 
 namespace
@@ -148,6 +148,13 @@ namespace
     }
 
     qint64 g_lastTelemetrySpeedMs = 0;
+    qint64 g_lastStatusMsgMs = 0;
+    nav_msgs::msg::Path::SharedPtr g_lastPlanMsg;
+    double g_planGoalX = 0.0;
+    double g_planGoalY = 0.0;
+    bool g_hasPlanGoal = false;
+    constexpr double kGoalNearThreshold = 0.50;
+    constexpr double kGoalReachedThreshold = 0.15;
 
     // 根据状态文本保守地推断状态机状态，返回是否成功识别
     bool inferRobotStateFromStatus(const QString &statusText, MainWindow::RobotState &outState)
@@ -406,6 +413,8 @@ void MainWindow::initMapView()
     QPixmap pix = QPixmap::fromImage(img);
 
     mapScene_->clear();
+    planPathItem_ = nullptr;
+
     mapPixmapItem_ = mapScene_->addPixmap(pix);
     mapScene_->setSceneRect(pix.rect());
 
@@ -421,6 +430,60 @@ void MainWindow::initMapView()
     QPen pen(Qt::red);
     pen.setWidth(3);
     mapScene_->addRect(pix.rect(), pen);
+
+    QPen planPen(QColor(255, 60, 60));
+    planPen.setWidth(3);
+    planPen.setCosmetic(true);
+
+    planPathItem_ = mapScene_->addPath(QPainterPath(), planPen);
+    planPathItem_->setZValue(10.0);
+
+    QPen startPen(QColor(249, 115, 22));
+    startPen.setWidth(2);
+    startPen.setCosmetic(true);
+    QBrush startBrush(QColor(251, 146, 60));
+
+    planStartItem_ = mapScene_->addEllipse(-4, -4, 8, 8, startPen, startBrush);
+    planStartItem_->setZValue(11.0);
+    planStartItem_->setVisible(false);
+
+    QPen goalPen(QColor(22, 163, 74));
+    goalPen.setWidth(2);
+    goalPen.setCosmetic(true);
+    QBrush goalBrush(QColor(74, 222, 128));
+
+    planGoalItem_ = mapScene_->addEllipse(-4, -4, 8, 8, goalPen, goalBrush);
+    planGoalItem_->setZValue(11.0);
+    planGoalItem_->setVisible(false);
+
+    QPen robotPen(QColor(37, 99, 235));
+    robotPen.setWidth(2);
+    robotPen.setCosmetic(true);
+
+    QBrush robotBrush(QColor(59, 130, 246));
+
+    robotPoseItem_ = mapScene_->addEllipse(-5, -5, 10, 10, robotPen, robotBrush);
+    robotPoseItem_->setZValue(20.0);
+    robotPoseItem_->setVisible(false);
+
+    QPen headingPen(QColor(37, 99, 235));
+    headingPen.setWidth(2);
+    headingPen.setCosmetic(true);
+
+    robotHeadingItem_ = mapScene_->addLine(QLineF(), headingPen);
+    robotHeadingItem_->setZValue(21.0);
+    robotHeadingItem_->setVisible(false);
+
+    QPen trailPen(QColor(59, 130, 246));
+    trailPen.setWidth(2);
+    trailPen.setCosmetic(true);
+
+    robotTrailItem_ = mapScene_->addPath(QPainterPath(), trailPen);
+    robotTrailItem_->setZValue(15.0);
+    robotTrailItem_->setVisible(false);
+
+    robotTrailPath_ = QPainterPath();
+    robotTrailStarted_ = false;
 
     ui->graphicsViewMap->fitInView(mapPixmapItem_, Qt::KeepAspectRatio);
     mapScaleFactor_ = 1.0;
@@ -608,6 +671,20 @@ void MainWindow::initRos()
     telemetry_sub_ = node_->create_subscription<std_msgs::msg::String>(
         "/agv/telemetry", 10,
         std::bind(&MainWindow::onAgvTelemetryMessage, this, std::placeholders::_1));
+    odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
+        "/odom", 10,
+        std::bind(&MainWindow::onOdomMessage, this, std::placeholders::_1));
+
+    plan_sub_ = node_->create_subscription<nav_msgs::msg::Path>(
+        "/plan", 10,
+        std::bind(&MainWindow::onPlanMessage, this, std::placeholders::_1));
+    map_sub_ = node_->create_subscription<nav_msgs::msg::OccupancyGrid>(
+        "/map", 10,
+        std::bind(&MainWindow::onMapMessage, this, std::placeholders::_1));
+    amcl_pose_sub_ = node_->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        "/amcl_pose", 10,
+        std::bind(&MainWindow::onAmclPoseMessage, this, std::placeholders::_1));
+
 #endif
 
     feedback_.rosConnected = true;
@@ -2022,6 +2099,8 @@ void MainWindow::onManualStop()
 // 预留字段：rosConnected / vehicleStatus / currentTask / modeText / batteryPercent / charging / paused
 void MainWindow::onAgvStatusMessage(const sweep_interfaces::msg::AgvStatus::SharedPtr msg)
 {
+    g_lastStatusMsgMs = QDateTime::currentMSecsSinceEpoch();
+
     const QString text = msgToYamlText(*msg);
 
     const QString status = extractTextByKeys(
@@ -2083,6 +2162,7 @@ void MainWindow::onAgvStatusMessage(const sweep_interfaces::msg::AgvStatus::Shar
 #else
 void MainWindow::onAgvStatusMessage(const std_msgs::msg::String::SharedPtr msg)
 {
+    g_lastStatusMsgMs = QDateTime::currentMSecsSinceEpoch();
     qDebug() << "[ROS STATUS] received";
     const QString text = QString::fromStdString(msg->data).trimmed();
 
@@ -2291,6 +2371,533 @@ void MainWindow::onAgvTelemetryMessage(const std_msgs::msg::String::SharedPtr ms
     applyFeedbackToUi();
 }
 #endif
+
+void MainWindow::onOdomMessage(const nav_msgs::msg::Odometry::SharedPtr msg)
+{
+    if (!msg) {
+        return;
+    }
+
+    feedback_.rosConnected = true;
+
+    feedback_.posX = msg->pose.pose.position.x;
+    feedback_.posY = msg->pose.pose.position.y;
+
+    const auto &q = msg->pose.pose.orientation;
+    const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+    const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+    feedback_.yaw = std::atan2(siny_cosp, cosy_cosp);
+
+    feedback_.linearSpeed = msg->twist.twist.linear.x;
+    feedback_.angularSpeed = msg->twist.twist.angular.z;
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    g_lastTelemetrySpeedMs = nowMs;
+
+    // 如果最近没有收到真实 status 话题，
+    // 就根据 /odom 的运动状态做一个“兜底推断”
+    const bool hasRecentRealStatus =
+        (g_lastStatusMsgMs > 0 && (nowMs - g_lastStatusMsgMs) < 2000);
+
+    if (!hasRecentRealStatus &&
+        currentState_ != Charging &&
+        currentState_ != Paused) {
+
+        const bool isMoving =
+            (std::fabs(feedback_.linearSpeed) > 0.03) ||
+            (std::fabs(feedback_.angularSpeed) > 0.05);
+
+        if (isMoving) {
+            currentState_ = Running;
+            feedback_.vehicleStatus = "运行中";
+
+            if (feedback_.currentTask.isEmpty() ||
+                feedback_.currentTask == "--" ||
+                feedback_.currentTask == "空闲") {
+                feedback_.currentTask = "底盘运动";
+            }
+
+            if (feedback_.modeText.isEmpty() ||
+                feedback_.modeText == "--" ||
+                feedback_.modeText == "地图与路径") {
+                feedback_.modeText = "里程计反馈";
+            }
+        } else {
+            currentState_ = Idle;
+            feedback_.vehicleStatus = "待机";
+
+            if (feedback_.currentTask == "底盘运动") {
+                feedback_.currentTask = "空闲";
+            }
+
+            if (feedback_.modeText == "里程计反馈") {
+                feedback_.modeText = "地图与路径";
+            }
+        }
+    }
+
+    applyFeedbackToUi();
+}
+
+void MainWindow::onAmclPoseMessage(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+{
+    if (!msg) {
+        return;
+    }
+
+    feedback_.rosConnected = true;
+
+    feedback_.posX = msg->pose.pose.position.x;
+    feedback_.posY = msg->pose.pose.position.y;
+
+    const auto &q = msg->pose.pose.orientation;
+    const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+    const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+    feedback_.yaw = std::atan2(siny_cosp, cosy_cosp);
+
+    updateGoalDistance();
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const bool hasRecentRealStatus =
+        (g_lastStatusMsgMs > 0 && (nowMs - g_lastStatusMsgMs) < 2000);
+
+    if (!hasRecentRealStatus &&
+        currentState_ != Charging &&
+        currentState_ != Paused &&
+        feedback_.goalDistance >= 0.0) {
+
+        if (feedback_.goalDistance <= kGoalReachedThreshold) {
+            currentState_ = Idle;
+            feedback_.vehicleStatus = "已到达";
+            feedback_.currentTask = "到达目标";
+            feedback_.modeText = "导航完成";
+        } else if (feedback_.goalDistance <= kGoalNearThreshold) {
+            currentState_ = Running;
+            feedback_.vehicleStatus = "接近目标";
+
+            if (feedback_.currentTask.isEmpty() ||
+                feedback_.currentTask == "--" ||
+                feedback_.currentTask == "空闲" ||
+                feedback_.currentTask == "底盘运动") {
+                feedback_.currentTask = "接近目标";
+            }
+
+            if (feedback_.modeText.isEmpty() ||
+                feedback_.modeText == "--" ||
+                feedback_.modeText == "地图与路径" ||
+                feedback_.modeText == "里程计反馈") {
+                feedback_.modeText = "导航接近终点";
+            }
+        }
+    }
+
+    updateRobotTrailOnMap();
+    updateRobotPoseOnMap();
+    applyFeedbackToUi();
+}
+
+void MainWindow::onPlanMessage(const nav_msgs::msg::Path::SharedPtr msg)
+{
+    g_lastPlanMsg = msg;
+
+    if (!msg || !mapScene_ || !mapPixmapItem_ || !planPathItem_) {
+        return;
+    }
+
+    if (mapResolution_ <= 0.0) {
+        return;
+    }
+
+    const auto &poses = msg->poses;
+    if (poses.empty()) {
+        planPathItem_->setPath(QPainterPath());
+        if (planStartItem_) {
+            planStartItem_->setVisible(false);
+        }
+        if (planGoalItem_) {
+            planGoalItem_->setVisible(false);
+        }
+        g_hasPlanGoal = false;
+        feedback_.goalDistance = -1.0;
+        return;
+    }
+
+    const int imageHeight = mapPixmapItem_->pixmap().height();
+    if (imageHeight <= 0) {
+        return;
+    }
+
+    auto worldToScene = [this, imageHeight](double wx, double wy) -> QPointF {
+        const double px = (wx - mapOriginX_) / mapResolution_;
+        const double py = imageHeight - ((wy - mapOriginY_) / mapResolution_);
+        return QPointF(px, py);
+    };
+
+    QPainterPath path;
+
+    const auto &firstPose = poses.front().pose.position;
+    const QPointF startPt = worldToScene(firstPose.x, firstPose.y);
+    path.moveTo(startPt);
+
+    for (size_t i = 1; i < poses.size(); ++i) {
+        const auto &p = poses[i].pose.position;
+        path.lineTo(worldToScene(p.x, p.y));
+    }
+
+    const auto &lastPose = poses.back().pose.position;
+    const QPointF goalPt = worldToScene(lastPose.x, lastPose.y);
+
+    g_planGoalX = lastPose.x;
+    g_planGoalY = lastPose.y;
+    g_hasPlanGoal = true;
+    updateGoalDistance();
+
+    if (planStartItem_) {
+        const double r = 4.0;
+        planStartItem_->setRect(startPt.x() - r, startPt.y() - r, 2.0 * r, 2.0 * r);
+        planStartItem_->setVisible(true);
+    }
+
+    if (planGoalItem_) {
+        const double r = 4.0;
+        planGoalItem_->setRect(goalPt.x() - r, goalPt.y() - r, 2.0 * r, 2.0 * r);
+        planGoalItem_->setVisible(true);
+    }
+
+    planPathItem_->setPath(path);
+    planPathItem_->setVisible(true);
+    planPathItem_->setZValue(10.0);
+
+    qDebug() << "[PLAN] frame =" << QString::fromStdString(msg->header.frame_id)
+             << " count =" << poses.size();
+}
+
+void MainWindow::onMapMessage(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
+{
+    if (!msg || !mapScene_ || !useRosMap_) {
+        return;
+    }
+
+    const int width = static_cast<int>(msg->info.width);
+    const int height = static_cast<int>(msg->info.height);
+
+    if (width <= 0 || height <= 0) {
+        qDebug() << "[MAP] invalid size:" << width << height;
+        return;
+    }
+
+    mapResolution_ = msg->info.resolution;
+    mapOriginX_ = msg->info.origin.position.x;
+    mapOriginY_ = msg->info.origin.position.y;
+
+    QImage img(width, height, QImage::Format_Grayscale8);
+
+    for (int y = 0; y < height; ++y) {
+        uchar *line = img.scanLine(height - 1 - y); // 翻转 Y 轴
+        for (int x = 0; x < width; ++x) {
+            const int idx = y * width + x;
+            const int8_t occ = msg->data[idx];
+
+            uchar value = 180; // 未知区域：浅灰
+            if (occ < 0) {
+                value = 180;
+            } else if (occ >= 65) {
+                value = 0; // 障碍物：黑
+            } else {
+                value = 255; // 可通行：白
+            }
+
+            line[x] = value;
+        }
+    }
+
+    const QPixmap pix = QPixmap::fromImage(img);
+
+    mapScene_->clear();
+    mapPixmapItem_ = mapScene_->addPixmap(pix);
+    mapScene_->setSceneRect(pix.rect());
+
+    QPen planPen(QColor(255, 60, 60));
+    planPen.setWidth(3);
+    planPen.setCosmetic(true);
+
+    planPathItem_ = mapScene_->addPath(QPainterPath(), planPen);
+    planPathItem_->setZValue(10.0);
+
+    QPen startPen(QColor(249, 115, 22));
+    startPen.setWidth(2);
+    startPen.setCosmetic(true);
+    QBrush startBrush(QColor(251, 146, 60));
+
+    planStartItem_ = mapScene_->addEllipse(-4, -4, 8, 8, startPen, startBrush);
+    planStartItem_->setZValue(11.0);
+    planStartItem_->setVisible(false);
+
+    QPen goalPen(QColor(22, 163, 74));
+    goalPen.setWidth(2);
+    goalPen.setCosmetic(true);
+    QBrush goalBrush(QColor(74, 222, 128));
+
+    planGoalItem_ = mapScene_->addEllipse(-4, -4, 8, 8, goalPen, goalBrush);
+    planGoalItem_->setZValue(11.0);
+    planGoalItem_->setVisible(false);
+
+    QPen robotPen(QColor(37, 99, 235));
+    robotPen.setWidth(2);
+    robotPen.setCosmetic(true);
+
+    QBrush robotBrush(QColor(59, 130, 246));
+
+    robotPoseItem_ = mapScene_->addEllipse(-5, -5, 10, 10, robotPen, robotBrush);
+    robotPoseItem_->setZValue(20.0);
+    robotPoseItem_->setVisible(false);
+
+    QPen headingPen(QColor(37, 99, 235));
+    headingPen.setWidth(2);
+    headingPen.setCosmetic(true);
+
+    robotHeadingItem_ = mapScene_->addLine(QLineF(), headingPen);
+    robotHeadingItem_->setZValue(21.0);
+    robotHeadingItem_->setVisible(false);
+
+    QPen trailPen(QColor(59, 130, 246));
+    trailPen.setWidth(2);
+    trailPen.setCosmetic(true);
+
+    robotTrailItem_ = mapScene_->addPath(QPainterPath(), trailPen);
+    robotTrailItem_->setZValue(15.0);
+    robotTrailItem_->setVisible(false);
+
+    robotTrailPath_ = QPainterPath();
+    robotTrailStarted_ = false;
+
+    // 如果之前已经收过 /plan，就按新的 /map 参数重新画一次
+    if (g_lastPlanMsg) {
+        onPlanMessage(g_lastPlanMsg);
+    }
+
+    updateWaypointMarkersOnMap();
+    resetRobotTrailOnMap();
+    updateRobotPoseOnMap();
+    highlightCurrentWaypointOnMap(highlightedWaypointIndex_);
+
+    if (ui->graphicsViewMap &&
+        ui->mapStack->currentWidget() == ui->pageMap2D &&
+        !mapUserZoomed_) {
+        ui->graphicsViewMap->fitInView(mapPixmapItem_, Qt::KeepAspectRatio);
+    }
+
+    qDebug() << "[MAP] ROS map loaded:"
+             << "size =" << width << "x" << height
+             << "res =" << mapResolution_
+             << "origin =" << mapOriginX_ << mapOriginY_;
+}
+
+void MainWindow::resetRobotTrailOnMap()
+{
+    robotTrailPath_ = QPainterPath();
+    robotTrailStarted_ = false;
+
+    if (robotTrailItem_) {
+        robotTrailItem_->setPath(robotTrailPath_);
+        robotTrailItem_->setVisible(false);
+    }
+}
+
+void MainWindow::updateRobotTrailOnMap()
+{
+    if (!mapScene_ || !mapPixmapItem_ || !robotTrailItem_) {
+        return;
+    }
+
+    if (mapResolution_ <= 0.0) {
+        return;
+    }
+
+    const int imageHeight = mapPixmapItem_->pixmap().height();
+    if (imageHeight <= 0) {
+        return;
+    }
+
+    const double sceneX = (feedback_.posX - mapOriginX_) / mapResolution_;
+    const double sceneY = imageHeight - ((feedback_.posY - mapOriginY_) / mapResolution_);
+
+    QPointF pt(sceneX, sceneY);
+
+    if (!robotTrailStarted_) {
+        robotTrailPath_ = QPainterPath();
+        robotTrailPath_.moveTo(pt);
+        robotTrailStarted_ = true;
+    } else {
+        const QPointF lastPt = robotTrailPath_.currentPosition();
+        const double dx = pt.x() - lastPt.x();
+        const double dy = pt.y() - lastPt.y();
+        const double dist2 = dx * dx + dy * dy;
+
+        // 只有位置变化足够明显时才追加，避免抖动太密
+        if (dist2 >= 4.0) {
+            robotTrailPath_.lineTo(pt);
+        }
+    }
+
+    robotTrailItem_->setPath(robotTrailPath_);
+    robotTrailItem_->setVisible(true);
+}
+
+void MainWindow::clearWaypointMarkersOnMap()
+{
+    for (auto *item : waypointMarkerItems_) {
+        if (mapScene_ && item) {
+            mapScene_->removeItem(item);
+        }
+        delete item;
+    }
+    waypointMarkerItems_.clear();
+
+    for (auto *item : waypointTextItems_) {
+        if (mapScene_ && item) {
+            mapScene_->removeItem(item);
+        }
+        delete item;
+    }
+    waypointTextItems_.clear();
+}
+
+void MainWindow::highlightCurrentWaypointOnMap(int index)
+{
+    highlightedWaypointIndex_ = index;
+
+    for (int i = 0; i < waypointMarkerItems_.size(); ++i) {
+        auto *marker = waypointMarkerItems_[i];
+        if (!marker) {
+            continue;
+        }
+
+        const bool active = (i == highlightedWaypointIndex_);
+
+        QPen pen(active ? QColor(22, 163, 74) : QColor(249, 115, 22));
+        pen.setWidth(2);
+        pen.setCosmetic(true);
+
+        QBrush brush(active ? QColor(74, 222, 128) : QColor(251, 146, 60));
+
+        marker->setPen(pen);
+        marker->setBrush(brush);
+        marker->setZValue(active ? 31.0 : 30.0);
+
+        if (i < waypointTextItems_.size() && waypointTextItems_[i]) {
+            waypointTextItems_[i]->setDefaultTextColor(
+                active ? QColor(22, 163, 74) : QColor(30, 64, 175));
+        }
+    }
+}
+
+void MainWindow::updateWaypointMarkersOnMap()
+{
+    if (!mapScene_ || !mapPixmapItem_) {
+        return;
+    }
+
+    clearWaypointMarkersOnMap();
+
+    if (routeWaypointPoints_.isEmpty() || mapResolution_ <= 0.0) {
+        return;
+    }
+
+    const int imageHeight = mapPixmapItem_->pixmap().height();
+    if (imageHeight <= 0) {
+        return;
+    }
+
+    auto worldToScene = [this, imageHeight](double wx, double wy) -> QPointF {
+        const double px = (wx - mapOriginX_) / mapResolution_;
+        const double py = imageHeight - ((wy - mapOriginY_) / mapResolution_);
+        return QPointF(px, py);
+    };
+
+    for (int i = 0; i < routeWaypointPoints_.size(); ++i) {
+        const QPointF wp = routeWaypointPoints_[i];
+        const QPointF scenePt = worldToScene(wp.x(), wp.y());
+
+        QPen pen(QColor(249, 115, 22));
+        pen.setWidth(2);
+        pen.setCosmetic(true);
+
+        QBrush brush(QColor(251, 146, 60));
+
+        auto *marker = mapScene_->addEllipse(
+            scenePt.x() - 4.0,
+            scenePt.y() - 4.0,
+            8.0,
+            8.0,
+            pen,
+            brush);
+        marker->setZValue(30.0);
+        waypointMarkerItems_.push_back(marker);
+
+        const QString label =
+            (i < routeWaypointNames_.size() && !routeWaypointNames_[i].isEmpty())
+                ? routeWaypointNames_[i]
+                : QString("P%1").arg(i + 1);
+
+        auto *text = mapScene_->addText(label);
+        QFont f = text->font();
+        f.setPointSize(9);
+        f.setBold(true);
+        text->setFont(f);
+        text->setDefaultTextColor(QColor(30, 64, 175));
+        text->setPos(scenePt.x() + 6.0, scenePt.y() - 18.0);
+        text->setZValue(31.0);
+        waypointTextItems_.push_back(text);
+    }
+
+    highlightCurrentWaypointOnMap(highlightedWaypointIndex_);
+}
+
+void MainWindow::updateGoalDistance()
+{
+    if (!g_hasPlanGoal) {
+        feedback_.goalDistance = -1.0;
+        return;
+    }
+
+    const double dx = g_planGoalX - feedback_.posX;
+    const double dy = g_planGoalY - feedback_.posY;
+    feedback_.goalDistance = std::sqrt(dx * dx + dy * dy);
+}
+
+void MainWindow::updateRobotPoseOnMap()
+{
+    if (!mapScene_ || !mapPixmapItem_ || !robotPoseItem_ || !robotHeadingItem_) {
+        return;
+    }
+
+    if (mapResolution_ <= 0.0) {
+        return;
+    }
+
+    const int imageHeight = mapPixmapItem_->pixmap().height();
+    if (imageHeight <= 0) {
+        return;
+    }
+
+    const double sceneX = (feedback_.posX - mapOriginX_) / mapResolution_;
+    const double sceneY = imageHeight - ((feedback_.posY - mapOriginY_) / mapResolution_);
+
+    const double radiusPx = 5.0;
+    robotPoseItem_->setRect(sceneX - radiusPx,
+                            sceneY - radiusPx,
+                            radiusPx * 2.0,
+                            radiusPx * 2.0);
+    robotPoseItem_->setVisible(true);
+
+    const double headingLenPx = std::max(12.0, 0.35 / mapResolution_);
+    const double endX = sceneX + std::cos(feedback_.yaw) * headingLenPx;
+    const double endY = sceneY - std::sin(feedback_.yaw) * headingLenPx;
+
+    robotHeadingItem_->setLine(sceneX, sceneY, endX, endY);
+    robotHeadingItem_->setVisible(true);
+}
 
 void MainWindow::onLocateClicked()
 {
@@ -2681,6 +3288,16 @@ void MainWindow::onRouteListClicked()
             routeDialog_ = nullptr;
         });
 
+        connect(routeDialog_, &RouteListDialog::waypointListChanged, this, [this]() {
+            if (!routeDialog_) {
+                return;
+            }
+
+            routeWaypointPoints_ = routeDialog_->waypointPoints();
+            routeWaypointNames_ = routeDialog_->waypointNames();
+            updateWaypointMarkersOnMap();
+        });
+
         // ⭐ 只连接一次（非常关键）
         connect(routeDialog_, &RouteListDialog::multiNavStarted, this, [this]() {
             isCharging_ = false;
@@ -2696,6 +3313,9 @@ void MainWindow::onRouteListClicked()
             feedback_.totalWaypoints = 0;
 
             applyFeedbackToUi();
+
+            highlightedWaypointIndex_ = 0;
+            highlightCurrentWaypointOnMap(highlightedWaypointIndex_);
         });
 
         connect(routeDialog_, &RouteListDialog::multiNavProgress, this, [this](const QString &pointName) {
@@ -2718,6 +3338,7 @@ void MainWindow::onRouteListClicked()
                     }
 
                     applyFeedbackToUi();
+                    highlightCurrentWaypointOnMap(currentIndex);
                 });
 
         connect(routeDialog_, &RouteListDialog::multiNavFinished, this, [this]() {
@@ -2733,6 +3354,8 @@ void MainWindow::onRouteListClicked()
             feedback_.totalWaypoints = 0;
 
             applyFeedbackToUi();
+            highlightedWaypointIndex_ = -1;
+            highlightCurrentWaypointOnMap(-1);
         });
     }
 
@@ -3010,10 +3633,16 @@ void MainWindow::applyFeedbackToUi()
     }
 
     if (ui->labelBottomPose) {
-        ui->labelBottomPose->setText(
-            QString("当前位置：%1,%2")
-                .arg(feedback_.posX, 0, 'f', 2)
-                .arg(feedback_.posY, 0, 'f', 2));
+        QString text = QString("当前位置：%1,%2")
+                           .arg(feedback_.posX, 0, 'f', 2)
+                           .arg(feedback_.posY, 0, 'f', 2);
+
+        if (feedback_.goalDistance >= 0.0) {
+            text += QString("  |  距目标：%1 m")
+                        .arg(feedback_.goalDistance, 0, 'f', 2);
+        }
+
+        ui->labelBottomPose->setText(text);
     }
 
     if (ui->labelBottomInfo) {
@@ -3028,8 +3657,18 @@ void MainWindow::applyFeedbackToUi()
             "border:1px solid transparent;"
             "font-weight:700;";
 
-        if (feedback_.vehicleStatus.contains("作业中")) {
+        if (feedback_.vehicleStatus.contains("已到达")) {
+            ui->labelBottomStatus->setText("系统状态：已到达目标");
+        } else if (feedback_.vehicleStatus.contains("接近目标")) {
+            ui->labelBottomStatus->setText("系统状态：接近目标");
+        }
+
+        if (feedback_.vehicleStatus.contains("已到达")) {
             bottomStyle += "background:#dcfce7; color:#166534; border-color:#86efac;";
+        } else if (feedback_.vehicleStatus.contains("接近目标")) {
+            bottomStyle += "background:#fef3c7; color:#92400e; border-color:#fcd34d;";
+        } else if (feedback_.vehicleStatus.contains("作业中") || feedback_.vehicleStatus.contains("运行中")) {
+            bottomStyle += "background:#dbeafe; color:#1d4ed8; border-color:#93c5fd;";
         } else if (feedback_.vehicleStatus.contains("暂停")) {
             bottomStyle += "background:#fef3c7; color:#92400e; border-color:#fcd34d;";
         } else if (feedback_.vehicleStatus.contains("回充") || feedback_.vehicleStatus.contains("充电")) {

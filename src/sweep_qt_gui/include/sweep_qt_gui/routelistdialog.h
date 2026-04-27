@@ -2,6 +2,7 @@
 #define SWEEP_QT_GUI_ROUTELISTDIALOG_H
 
 #include <QDialog>
+#include <QPointF>
 #include <QString>
 #include <QVector>
 
@@ -16,11 +17,15 @@ public:
     explicit RouteListDialog(QWidget *parent = nullptr);
     void startMultiNavDirectly();
 
+    QVector<QPointF> waypointPoints() const;
+    QStringList waypointNames() const;
+
 signals:
     void multiNavStarted();
     void multiNavProgress(const QString &pointName);
     void multiNavProgressIndex(int currentIndex, int totalCount, const QString &pointName);
     void multiNavFinished();
+    void waypointListChanged();
 
 private slots:
     void onAddPointClicked();
